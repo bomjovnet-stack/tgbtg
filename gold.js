@@ -24,131 +24,212 @@
             '/account/status', '/premium/check', '/cub/premium', 
             '/users/get', '/profiles/all' 
         ],
-        // Сверхточный фильтр только для рекламных элементов (не трогает иконки и меню)
-        AD_CLASS_REGEXP: /(^|\s)(ad-preroll|lampa-advert|ad-banner|cub-advert)(\s|$)/i
+        AD_CLASS_REGEXP: /(^|\s)(ad-preroll|lampa-advert|ad-banner|cub-advert)(\s|$)/i,
+        CHECK_INTERVAL: 1000,
+        OBSERVER_CONFIG: { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'id'] }
     }; 
 
+    // Кеш для проверок
+    var cache = {
+        blockedPatterns: {},
+        premiumPatterns: {}
+    };
+
     function log(msg) {
-        if (window.console && console.log) console.log('[' + PLUGIN_ID + '] ' + msg);
+        if (window.console && console.log) {
+            console.log('[' + PLUGIN_ID + '] ' + msg);
+        }
+    }
+
+    function isBlockedRequest(url) {
+        if (cache.blockedPatterns[url] !== undefined) {
+            return cache.blockedPatterns[url];
+        }
+        var result = false;
+        for (var i = 0; i < CONFIG.BLOCKED_REQUEST_PATTERNS.length; i++) {
+            if (url.indexOf(CONFIG.BLOCKED_REQUEST_PATTERNS[i]) !== -1) {
+                result = true;
+                break;
+            }
+        }
+        cache.blockedPatterns[url] = result;
+        return result;
+    }
+
+    function isPremiumRequest(url) {
+        if (cache.premiumPatterns[url] !== undefined) {
+            return cache.premiumPatterns[url];
+        }
+        var result = false;
+        for (var i = 0; i < CONFIG.PREMIUM_RESPONSE_PATTERNS.length; i++) {
+            if (url.indexOf(CONFIG.PREMIUM_RESPONSE_PATTERNS[i]) !== -1) {
+                result = true;
+                break;
+            }
+        }
+        cache.premiumPatterns[url] = result;
+        return result;
     }
 
     // ============================================================
     // 1. БЛОКИРОВКА ЗАГРУЗКИ РЕКЛАМНЫХ СКРИПТОВ (ES5)
     // ============================================================
     function blockAdScripts() { 
-        var origAppend = Element.prototype.appendChild; 
-        var origInsert = Element.prototype.insertBefore; 
+        try {
+            var origAppend = Element.prototype.appendChild; 
+            var origInsert = Element.prototype.insertBefore; 
 
-        function isAdScript(el) {
-            if (el && el.tagName === 'SCRIPT' && el.src) {
-                var srcStr = String(el.src);
-                for (var i = 0; i < CONFIG.BLOCKED_SCRIPT_PATTERNS.length; i++) {
-                    if (srcStr.indexOf(CONFIG.BLOCKED_SCRIPT_PATTERNS[i]) !== -1) return true;
+            function isAdScript(el) {
+                try {
+                    if (el && el.tagName === 'SCRIPT' && el.src) {
+                        var srcStr = String(el.src);
+                        for (var i = 0; i < CONFIG.BLOCKED_SCRIPT_PATTERNS.length; i++) {
+                            if (srcStr.indexOf(CONFIG.BLOCKED_SCRIPT_PATTERNS[i]) !== -1) return true;
+                        }
+                    }
+                } catch (e) {
+                    log('Error checking ad script: ' + e.message);
                 }
+                return false;
             }
-            return false;
+
+            Element.prototype.appendChild = function(el) { 
+                try {
+                    if (isAdScript(el)) { 
+                        el.src = 'data:text/javascript;base64,Y29uc29sZS5sb2coJ0FkQmxvY2tlZCcpOw=='; 
+                        log('Blocked ad script: ' + el.src);
+                    } 
+                } catch (e) {
+                    log('Error in appendChild: ' + e.message);
+                }
+                return origAppend.call(this, el); 
+            }; 
+
+            Element.prototype.insertBefore = function(el, ref) { 
+                try {
+                    if (isAdScript(el)) { 
+                        el.src = 'data:text/javascript;base64,Y29uc29sZS5sb2coJ0FkQmxvY2tlZCcpOw=='; 
+                        log('Blocked ad script in insertBefore: ' + el.src);
+                    } 
+                } catch (e) {
+                    log('Error in insertBefore: ' + e.message);
+                }
+                return origInsert.call(this, el, ref); 
+            }; 
+        } catch (e) {
+            log('Failed to initialize script blocking: ' + e.message);
         }
-
-        Element.prototype.appendChild = function(el) { 
-            if (isAdScript(el)) { 
-                el.src = 'data:text/javascript;base64,Y29uc29sZS5sb2coJ0FkQmxvY2tlZCcpOw=='; 
-            } 
-            return origAppend.call(this, el); 
-        }; 
-
-        Element.prototype.insertBefore = function(el, ref) { 
-            if (isAdScript(el)) { 
-                el.src = 'data:text/javascript;base64,Y29uc29sZS5sb2coJ0FkQmxvY2tlZCcpOw=='; 
-            } 
-            return origInsert.call(this, el, ref); 
-        }; 
     } 
 
     // ============================================================
     // 2. ПЕРЕХВАТ FETCH И XMLHTTPREQUEST (ES5)
     // ============================================================
     function interceptNetwork() { 
-        var origFetch = window.fetch; 
-        if (origFetch) {
-            window.fetch = function(input, init) { 
-                var url = typeof input === 'string' ? input : (input && input.url ? input.url : ''); 
-                if (url) {
-                    var isAd = false;
-                    for (var i = 0; i < CONFIG.BLOCKED_REQUEST_PATTERNS.length; i++) {
-                        if (url.indexOf(CONFIG.BLOCKED_REQUEST_PATTERNS[i]) !== -1) { isAd = true; break; }
-                    }
-                    if (isAd) { 
-                        log('Блокирован fetch: ' + url); 
-                        return Promise.resolve(new Response('{}', { status: 200 })); 
-                    } 
+        try {
+            var origFetch = window.fetch; 
+            if (origFetch) {
+                window.fetch = function(input, init) { 
+                    try {
+                        var url = typeof input === 'string' ? input : (input && input.url ? input.url : ''); 
+                        if (url) {
+                            if (isBlockedRequest(url)) { 
+                                log('Fetch blocked: ' + url); 
+                                return Promise.resolve(new Response('{}', { status: 200 })); 
+                            } 
 
-                    var isPro = false;
-                    for (var j = 0; j < CONFIG.PREMIUM_RESPONSE_PATTERNS.length; j++) {
-                        if (url.indexOf(CONFIG.PREMIUM_RESPONSE_PATTERNS[j]) !== -1) { isPro = true; break; }
+                            if (isPremiumRequest(url)) { 
+                                log('Fetch spoofed as premium: ' + url); 
+                                var fake = JSON.stringify({ 
+                                    premium: true, pro: true, vip: true, 
+                                    expired: false, active: true, end: '2030-12-31' 
+                                }); 
+                                return Promise.resolve(new Response(fake, { status: 200 })); 
+                            } 
+                        }
+                    } catch (e) {
+                        log('Error in fetch interception: ' + e.message);
                     }
-                    if (isPro) { 
-                        log('Подменён fetch профиля: ' + url); 
-                        var fake = JSON.stringify({ premium: true, pro: true, vip: true, expired: false, active: true, end: '2030-12-31' }); 
-                        return Promise.resolve(new Response(fake, { status: 200 })); 
-                    } 
-                }
-                return origFetch.call(this, input, init); 
-            }; 
+                    return origFetch.call(this, input, init); 
+                }; 
+            }
+        } catch (e) {
+            log('Failed to initialize fetch interception: ' + e.message);
         }
 
-        var OrigXHR = window.XMLHttpRequest; 
-        if (OrigXHR) {
-            window.XMLHttpRequest = function() { 
-                var xhr = new OrigXHR(); 
-                var origOpen = xhr.open; 
-                var origSend = xhr.send; 
+        try {
+            var OrigXHR = window.XMLHttpRequest; 
+            if (OrigXHR) {
+                window.XMLHttpRequest = function() { 
+                    var xhr = new OrigXHR(); 
+                    var origOpen = xhr.open; 
+                    var origSend = xhr.send; 
 
-                xhr.open = function(method, url, async, user, pass) { 
-                    this._url = url; 
-                    return origOpen.call(this, method, url, async, user, pass); 
-                }; 
-
-                xhr.send = function(body) { 
-                    var url = this._url || ''; 
-                    if (url) {
-                        var isAd = false;
-                        for (var i = 0; i < CONFIG.BLOCKED_REQUEST_PATTERNS.length; i++) {
-                            if (url.indexOf(CONFIG.BLOCKED_REQUEST_PATTERNS[i]) !== -1) { isAd = true; break; }
+                    xhr.open = function(method, url, async, user, pass) { 
+                        try {
+                            this._url = url; 
+                        } catch (e) {
+                            log('Error in XHR open: ' + e.message);
                         }
-                        if (isAd) { 
-                            log('Блокирован XHR: ' + url); 
-                            var selfBlock = this;
-                            setTimeout(function() { 
-                                selfBlock.readyState = 4; selfBlock.status = 200; selfBlock.statusText = 'OK'; 
-                                selfBlock.responseText = '{}'; selfBlock.response = '{}'; 
-                                if (selfBlock.onreadystatechange) selfBlock.onreadystatechange(); 
-                                if (selfBlock.onload) selfBlock.onload(); 
-                            }, 0); 
-                            return; 
-                        } 
+                        return origOpen.call(this, method, url, async, user, pass); 
+                    }; 
 
-                        var isPro = false;
-                        for (var j = 0; j < CONFIG.PREMIUM_RESPONSE_PATTERNS.length; j++) {
-                            if (url.indexOf(CONFIG.PREMIUM_RESPONSE_PATTERNS[j]) !== -1) { isPro = true; break; }
+                    xhr.send = function(body) { 
+                        try {
+                            var url = this._url || ''; 
+                            if (url) {
+                                if (isBlockedRequest(url)) { 
+                                    log('XHR blocked: ' + url); 
+                                    var selfBlock = this;
+                                    setTimeout(function() { 
+                                        try {
+                                            selfBlock.readyState = 4;
+                                            selfBlock.status = 200;
+                                            selfBlock.statusText = 'OK'; 
+                                            selfBlock.responseText = '{}';
+                                            selfBlock.response = '{}'; 
+                                            if (selfBlock.onreadystatechange) selfBlock.onreadystatechange(); 
+                                            if (selfBlock.onload) selfBlock.onload(); 
+                                        } catch (e) {
+                                            log('Error in blocked XHR response: ' + e.message);
+                                        }
+                                    }, 0); 
+                                    return; 
+                                } 
+
+                                if (isPremiumRequest(url)) { 
+                                    log('XHR spoofed as premium: ' + url); 
+                                    var selfPro = this;
+                                    setTimeout(function() { 
+                                        try {
+                                            selfPro.readyState = 4;
+                                            selfPro.status = 200;
+                                            selfPro.statusText = 'OK'; 
+                                            var fake = JSON.stringify({ 
+                                                premium: true, pro: true, vip: true, 
+                                                expired: false, active: true, end: '2030-12-31' 
+                                            }); 
+                                            selfPro.responseText = fake;
+                                            selfPro.response = fake; 
+                                            if (selfPro.onreadystatechange) selfPro.onreadystatechange(); 
+                                            if (selfPro.onload) selfPro.onload(); 
+                                        } catch (e) {
+                                            log('Error in premium XHR response: ' + e.message);
+                                        }
+                                    }, 0); 
+                                    return; 
+                                } 
+                            }
+                        } catch (e) {
+                            log('Error in XHR send: ' + e.message);
                         }
-                        if (isPro) { 
-                            log('Подменён XHR профиля: ' + url); 
-                            var selfPro = this;
-                            setTimeout(function() { 
-                                selfPro.readyState = 4; selfPro.status = 200; selfPro.statusText = 'OK'; 
-                                var fake = JSON.stringify({ premium: true, pro: true, vip: true, expired: false, active: true, end: '2030-12-31' }); 
-                                selfPro.responseText = fake; selfPro.response = fake; 
-                                if (selfPro.onreadystatechange) selfPro.onreadystatechange(); 
-                                if (selfPro.onload) selfPro.onload(); 
-                            }, 0); 
-                            return; 
-                        } 
-                    }
-                    return origSend.call(this, body); 
+                        return origSend.call(this, body); 
+                    }; 
+                    return xhr; 
                 }; 
-                return xhr; 
-            }; 
-            window.XMLHttpRequest.prototype = OrigXHR.prototype; 
+                window.XMLHttpRequest.prototype = OrigXHR.prototype; 
+            }
+        } catch (e) {
+            log('Failed to initialize XHR interception: ' + e.message);
         }
     } 
 
@@ -156,58 +237,202 @@
     // 3. БЕЗОПАСНАЯ БЛОКИРОВКА ЭЛЕМЕНТОВ (БЕЗ ТРОГАНИЯ innerHTML)
     // ============================================================
     function blockAdElements() { 
-        var origCreate = document.createElement; 
-        document.createElement = function(tag, options) { 
-            var el = origCreate.call(this, tag, options); 
-            var className = el.className || ''; 
-            var id = el.id || ''; 
-            
-            // Проверка строго по регулярному выражению рекламных классов
-            if (CONFIG.AD_CLASS_REGEXP.test(className) || id === 'cub-advert') { 
-                log('Блокировка создания элемента: ' + tag + ' ' + className); 
-                var replacement = origCreate.call(this, 'div'); 
-                replacement.style.display = 'none'; 
-                return replacement; 
-            } 
-            return el; 
-        }; 
+        try {
+            var origCreate = document.createElement; 
+            document.createElement = function(tag, options) { 
+                try {
+                    var el = origCreate.call(this, tag, options); 
+                    var className = el.className || ''; 
+                    var id = el.id || ''; 
+                    
+                    if (CONFIG.AD_CLASS_REGEXP.test(className) || id === 'cub-advert') { 
+                        log('Blocking element creation: ' + tag + ' class=' + className); 
+                        var replacement = origCreate.call(this, 'div'); 
+                        replacement.style.display = 'none'; 
+                        return replacement; 
+                    } 
+                    return el;
+                } catch (e) {
+                    log('Error in createElement: ' + e.message);
+                    return origCreate.call(this, tag, options);
+                }
+            }; 
+        } catch (e) {
+            log('Failed to initialize element blocking: ' + e.message);
+        }
     } 
 
     // ============================================================
     // 4. ФИЗИЧЕСКОЕ УДАЛЕНИЕ РЕКЛАМНЫХ ЭЛЕМЕНТОВ ИЗ DOM (ES5)
     // ============================================================
     function removeAdElements() { 
-        if (!CONFIG.AD_SELECTORS) return;
-        for (var i = 0; i < CONFIG.AD_SELECTORS.length; i++) {
-            try {
-                var elements = document.querySelectorAll(CONFIG.AD_SELECTORS[i]);
-                for (var j = 0; j < elements.length; j++) {
-                    if (elements[j]) elements[j].remove();
+        try {
+            if (!CONFIG.AD_SELECTORS) return;
+            for (var i = 0; i < CONFIG.AD_SELECTORS.length; i++) {
+                try {
+                    var elements = document.querySelectorAll(CONFIG.AD_SELECTORS[i]);
+                    for (var j = 0; j < elements.length; j++) {
+                        if (elements[j]) {
+                            elements[j].remove();
+                            log('Removed ad element: ' + CONFIG.AD_SELECTORS[i]);
+                        }
+                    }
+                } catch (e) {
+                    log('Error removing elements with selector ' + CONFIG.AD_SELECTORS[i] + ': ' + e.message);
                 }
-            } catch(e) {}
+            }
+        } catch (e) {
+            log('Error in removeAdElements: ' + e.message);
         }
     } 
 
-    // Жесткие CSS стили для сокрытия черных рамок рекламы (убирает фон ad-preroll)
+    // ============================================================
+    // 5. ИНЪЕКЦИЯ CSS СТИЛЕЙ
+    // ============================================================
     function injectStyles() {
-        var style = document.createElement('style');
-        style.textContent = '.ad-preroll, .ad-preroll__bg, .lampa-advert, #cub-advert, .player-video__advert { display: none !important; opacity: 0 !important; visibility: hidden !important; width: 0px !important; height: 0px !important; transition: none !important; animation: none !important; }';
-        if (document.head) document.head.appendChild(style);
-        else if (document.documentElement) document.documentElement.appendChild(style);
+        try {
+            var style = document.createElement('style');
+            style.textContent = '.ad-preroll, .ad-preroll__bg, .lampa-advert, #cub-advert, .player-video__advert, .ad-banner, [data-ad] { display: none !important; opacity: 0 !important; visibility: hidden !important; width: 0 !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }';
+            if (document.head) {
+                document.head.appendChild(style);
+            } else if (document.documentElement) {
+                document.documentElement.appendChild(style);
+            }
+            log('Styles injected');
+        } catch (e) {
+            log('Error injecting styles: ' + e.message);
+        }
     }
 
     // ============================================================
-    // 5. ЗАГЛУШКИ ДЛЯ VAST И IMA SDK (ES5)
+    // 6. ЗАГЛУШКИ ДЛЯ VAST И IMA SDK (ES5)
     // ============================================================
     function blockAdSDK() { 
-        var MockVAST = function() { 
-            log('VASTPlayer заглушка запущена'); 
-            this.load = function() { return Promise.resolve(); }; 
-            this.startAd = function() { return Promise.resolve(); }; 
-            this.stopAd = function() { return Promise.resolve(); }; 
-            this.play = function() { return Promise.resolve(); };
-            this.on = function() { return this; }; 
-            this.once = function() { return this; }; 
-            this._events = {}; 
-            this.container = document.createElement('div');};try {Object.defineProperty(window, 'VASTPlayer', { get: function() { return MockVAST; }, set: function() {}, configurable: false });} catch(e) {}var MockIMA = {AdDisplayContainer: function() { this.initialize = function() {}; },AdsLoader: function() { this.requestAds = function() {}; this.addEventListener = function() {}; this.destroy = function() {}; },AdsManager: function() { this.init = function() {}; this.start = function() {}; this.stop = function() {}; this.destroy = function() {}; this.setVolume = function() {}; this.addEventListener = function() {}; this.resize = function() {}; },AdsRequest: function() {},AdEvent: { Type: { STARTED: 'started', COMPLETE: 'complete', ALL_ADS_COMPLETED: 'allAdsCompleted', SKIPPED: 'skipped', AD_PROGRESS: 'adProgress', PAUSED: 'paused', RESUMED: 'resumed' } },AdErrorEvent: { Type: { AD_ERROR: 'adError' } },AdsManagerLoadedEvent: { Type: { ADS_MANAGER_LOADED: 'adsManagerLoaded' } },ViewMode: { NORMAL: 'normal' },ImaSdkSettings: { setVpaidMode: function() {}, setLocale: function() {} }};try {Object.defineProperty(window, 'google', { get: function() { return { ima: MockIMA }; }, set: function() {}, configurable: false });} catch(e) {}} function applyLampaPatches() {if (!window.Lampa) return;try {if (window.Lampa.Preroll) {window.Lampa.Preroll.show = function(data, callback) {log('Preroll.show перехвачен, пропускаем рекламу');if (callback) callback();};}if (window.Lampa.Banner) {window.Lampa.Banner.start = function() { log('Banner.start перехвачен'); };}if (window.Lampa.Personal) {window.Lampa.Personal.confirm = function() { return true; };}if (window.Lampa.Account) {window.Lampa.Account.is_premium = true; 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               try {Object.defineProperty(window.Lampa.Account, 'hasPremium', {get: function() { return function() { return true; }; },set: function() {},configurable: true});} catch(e_prem) {window.Lampa.Account.hasPremium = function() { return true; };}if (window.Lampa.Account.Permit) {try {Object.defineProperty(window.Lampa.Account.Permit, 'access', { get: function() { return true; }, configurable: true });Object.defineProperty(window.Lampa.Account.Permit, 'sync', { get: function() { return true; }, configurable: true });} catch(e_perm) {window.Lampa.Account.Permit.access = true;window.Lampa.Account.Permit.sync = true;}}}if (window.Lampa.VastManager && window.Lampa.VastManager.prototype) {window.Lampa.VastManager.prototype.get = function() {log('VastManager.get перехвачен, возвращаем null');return null;};}if (window.CUB) {window.CUB.premium = true;window.CUB.pro = true;window.CUB.vip = true;window.CUB.ads = false;window.CUB.advert = function() { return false; };}} catch(e) {log('Ошибка патчей ядра Lampa: ' + e.message);}} function suppressAdErrors() {window.addEventListener('error', function(e) {var msg = e.message || '';if (msg.indexOf('adPreroll') !== -1 || msg.indexOf('AdPreroll') !== -1 || msg.indexOf('vast') !== -1 || msg.indexOf('IMA') !== -1) {if (e.preventDefault) e.preventDefault();if (e.stopPropagation) e.stopPropagation();return true;}}, true);} function initPlugin() {blockAdScripts();interceptNetwork();blockAdElements();injectStyles();blockAdSDK();suppressAdErrors();if (window.MutationObserver && document.documentElement) {var observer = new MutationObserver(function() {removeAdElements();});observer.observe(document.documentElement, { childList: true, subtree: true });} if (window.Lampa && window.Lampa.Listener) {window.Lampa.Listener.follow('app', function(e) {if (e.type === 'ready') applyLampaPatches();});} else {var attempts = 0;var interval = setInterval(function() {attempts++;if (window.Lampa && window.Lampa.Listener) {clearInterval(interval);window.Lampa.Listener.follow('app', function(e) {if (e.type === 'ready') applyLampaPatches();});} else if (attempts > 50) {clearInterval(interval);setTimeout(applyLampaPatches, 2000);}}, 100);} var backgroundPROTimer = setInterval(applyLampaPatches, 30);setTimeout(function() { clearInterval(backgroundPROTimer); }, 15000);log('Исправленная золотая сборка запущена безупречно.');}if (document.readyState === 'loading') {document.addEventListener('DOMContentLoaded', initPlugin);} else {initPlugin();}})();
+        try {
+            var MockVAST = function() { 
+                log('VASTPlayer mock initialized'); 
+                this.load = function() { return Promise.resolve(); }; 
+                this.startAd = function() { return Promise.resolve(); }; 
+                this.stopAd = function() { return Promise.resolve(); }; 
+                this.play = function() { return Promise.resolve(); };
+                this.pause = function() { return Promise.resolve(); };
+                this.on = function() { return this; }; 
+                this.once = function() { return this; }; 
+                this.off = function() { return this; };
+                this._events = {}; 
+                this.container = document.createElement('div');
+            };
+
+            try {
+                Object.defineProperty(window, 'VASTPlayer', { 
+                    get: function() { return MockVAST; }, 
+                    set: function() {}, 
+                    configurable: false 
+                });
+                log('VASTPlayer mocked');
+            } catch (e) {
+                window.VASTPlayer = MockVAST;
+                log('VASTPlayer assigned directly: ' + e.message);
+            }
+
+            var MockIMA = function() {
+                log('IMA SDK mock initialized');
+                this.AdsLoader = function() {};
+                this.AdsManager = function() {};
+                this.AdDisplayContainer = function() {};
+            };
+
+            try {
+                Object.defineProperty(window, 'google', {
+                    value: { ima: MockIMA },
+                    writable: false,
+                    configurable: false
+                });
+                log('IMA SDK mocked');
+            } catch (e) {
+                window.google = { ima: MockIMA };
+                log('IMA SDK assigned directly: ' + e.message);
+            }
+        } catch (e) {
+            log('Failed to initialize SDK blocking: ' + e.message);
+        }
+    } 
+
+    // ============================================================
+    // 7. MUTATION OBSERVER ДЛЯ ДИНАМИЧЕСКИХ ЭЛЕМЕНТОВ
+    // ============================================================
+    function observeDOMChanges() {
+        try {
+            if (typeof MutationObserver === 'undefined') {
+                log('MutationObserver not supported, using interval');
+                setInterval(removeAdElements, CONFIG.CHECK_INTERVAL);
+                return;
+            }
+
+            var observer = new MutationObserver(function(mutations) {
+                try {
+                    removeAdElements();
+                } catch (e) {
+                    log('Error in mutation observer: ' + e.message);
+                }
+            });
+
+            var config = CONFIG.OBSERVER_CONFIG;
+            if (document.documentElement) {
+                observer.observe(document.documentElement, config);
+                log('DOM observer started');
+            }
+        } catch (e) {
+            log('Failed to initialize DOM observer: ' + e.message);
+            setInterval(removeAdElements, CONFIG.CHECK_INTERVAL);
+        }
+    }
+
+    // ============================================================
+    // 8. ИНИЦИАЛИЗАЦИЯ
+    // ============================================================
+    function initialize() {
+        try {
+            log('Plugin initialization started');
+            
+            blockAdScripts();
+            log('✓ Ad scripts blocking enabled');
+            
+            interceptNetwork();
+            log('✓ Network interception enabled');
+            
+            blockAdElements();
+            log('✓ Element blocking enabled');
+            
+            injectStyles();
+            log('✓ Styles injected');
+            
+            blockAdSDK();
+            log('✓ SDK mocking enabled');
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    removeAdElements();
+                    observeDOMChanges();
+                    log('✓ DOM observer started');
+                });
+            } else {
+                removeAdElements();
+                observeDOMChanges();
+                log('✓ DOM observer started');
+            }
+            
+            log('Plugin initialization completed successfully');
+        } catch (e) {
+            log('FATAL: Initialization failed: ' + e.message);
+        }
+    }
+
+    // Запуск при загрузке
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize);
+    } else {
+        initialize();
+    }
+
+})();

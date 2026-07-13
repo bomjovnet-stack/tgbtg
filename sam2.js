@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Lampa: YouTube Premium Edition (Tizen UI Fix)
-// @namespace    lampa-youtube-premium-tizen-fix
-// @version      1000.2.0
-// @description  Исправленный UI для Tizen, абсолютный черный фон, обход проверок
+// @name         Lampa: YouTube Premium Edition (CSS Fix)
+// @namespace    lampa-youtube-premium-css-fix
+// @version      1000.3.0
+// @description  Абсолютный приоритет стилей (body prefix), Tizen UI, OLED Black
 // @match        *://*/*
 // @run-at       document-start
 // @grant        none
@@ -11,8 +11,8 @@
 (function() { 
     'use strict';
 
-    if (window.__lampaYTPremiumTizen) return;
-    window.__lampaYTPremiumTizen = true;
+    if (window.__lampaYTPremiumCSSFix) return;
+    window.__lampaYTPremiumCSSFix = true;
 
     var LOG_PREFIX = '🔴 [Lampa Premium]';
     function log(msg) { if (window.console && console.log) console.log(LOG_PREFIX + ' ' + msg); }
@@ -59,35 +59,38 @@
     }
 
     // ============================================================
-    // 2. ИСПРАВЛЕННЫЙ ДИЗАЙН ДЛЯ TIZEN OS
+    // 2. ИНЖЕНЕРИЯ ИНТЕРФЕЙСА (MAXIMUM CSS SPECIFICITY)
     // ============================================================
     function injectPremiumDesign() {
-        if (document.getElementById('yt-premium-css')) return;
+        var styleId = 'yt-premium-css-v3';
+        if (document.getElementById(styleId)) return;
+        
         var style = document.createElement('style');
-        style.id = 'yt-premium-css';
+        style.id = styleId;
         style.type = 'text/css';
         
+        // Префикс 'body ' удваивает вес селектора. Lampa не сможет его перекрыть.
         var cssText = 
             /* БЛОКИРОВКА РЕКЛАМЫ */
-            CONFIG.AD_SELECTORS.join(', ') + ' { display: none !important; opacity: 0 !important; visibility: hidden !important; width: 0 !important; height: 0 !important; pointer-events: none !important; position: absolute !important; left: -9999px !important; } ' +
+            CONFIG.AD_SELECTORS.join(', ') + ' { display: none !important; opacity: 0 !important; visibility: hidden !important; width: 0 !important; height: 0 !important; } ' +
             
             /* ФОНЫ (Прозрачные обертки, темный body) */
             'body { background-color: #0f0f0f !important; } ' +
-            '.wrap, .scroll__content, .layer--width, .activity { background: transparent !important; } ' +
-            '.background { opacity: 0.45 !important; filter: blur(15px) !important; -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 90%); mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 90%); } ' +
+            'body .wrap, body .scroll__content, body .layer--width, body .activity { background: transparent !important; } ' +
+            'body .background { opacity: 0.45 !important; filter: blur(15px) !important; -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 90%); mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 90%); } ' +
             
             /* КАРТОЧКИ ФИЛЬМОВ */
-            '.card__view { border-radius: 12px !important; overflow: hidden !important; background: transparent !important; transition: transform 0.2s ease, box-shadow 0.2s ease !important; } ' +
-            '.card.focus .card__view { transform: scale(1.05) !important; box-shadow: 0 0 0 4px #f1f1f1, 0 10px 25px rgba(0,0,0,0.8) !important; border: none !important; } ' +
-            '.card__title { font-weight: 600 !important; font-size: 1.1em !important; margin-top: 8px !important; color: #ffffff !important; text-shadow: 0 1px 3px rgba(0,0,0,0.8) !important; } ' +
-            '.card__age { background: transparent !important; color: #aaaaaa !important; font-size: 0.9em !important; font-weight: 400 !important; padding: 0 !important; text-align: left !important; margin-top: 2px !important; } ' +
+            'body .card__view { border-radius: 12px !important; overflow: hidden !important; background: transparent !important; transition: transform 0.2s ease, box-shadow 0.2s ease !important; } ' +
+            'body .card.focus .card__view { transform: scale(1.05) !important; box-shadow: 0 0 0 4px #f1f1f1, 0 10px 25px rgba(0,0,0,0.8) !important; border: none !important; } ' +
+            'body .card__title { font-weight: 600 !important; font-size: 1.1em !important; margin-top: 8px !important; color: #ffffff !important; text-shadow: 0 1px 3px rgba(0,0,0,0.8) !important; } ' +
+            'body .card__age { background: transparent !important; color: #aaaaaa !important; font-size: 0.9em !important; font-weight: 400 !important; padding: 0 !important; text-align: left !important; margin-top: 2px !important; } ' +
             
             /* БАЗОВЫЕ ЭЛЕМЕНТЫ УПРАВЛЕНИЯ */
-            '.button, .simple-button, .full-start__button { border-radius: 20px !important; background-color: rgba(255,255,255,0.1) !important; font-weight: 500 !important; transition: transform 0.15s ease, background-color 0.15s ease !important; } ' +
-            '.menu__item, .settings-param, .selectbox-item { border-radius: 8px !important; margin: 4px 10px !important; width: calc(100% - 20px) !important; transition: transform 0.15s ease, background-color 0.15s ease !important; } ' +
+            'body .button, body .simple-button, body .full-start__button { border-radius: 20px !important; background-color: rgba(255,255,255,0.1) !important; font-weight: 500 !important; transition: transform 0.15s ease, background-color 0.15s ease !important; } ' +
+            'body .menu__item, body .settings-param, body .selectbox-item { border-radius: 8px !important; margin: 4px 10px !important; width: calc(100% - 20px) !important; transition: transform 0.15s ease, background-color 0.15s ease !important; } ' +
             
-            /* ИСПРАВЛЕНИЕ TIZEN FOCUS BUG (Жестко задаем цвета и убираем градиенты) */
-            '.button.focus, .simple-button.focus, .full-start__button.focus, .menu__item.focus, .settings-param.focus, .selectbox-item.focus { ' +
+            /* ИСПРАВЛЕНИЕ TIZEN FOCUS (Жесткое перекрытие цвета текста) */
+            'body .focus { ' +
                 'background-color: #f1f1f1 !important; ' +
                 'background-image: none !important; ' +
                 'transform: scale(1.04) !important; ' +
@@ -95,31 +98,26 @@
                 'z-index: 99; ' +
             '} ' +
             
-            /* Точные пути к тексту и иконкам вместо селектора * */
-            '.menu__item.focus .menu__text, .menu__item.focus .menu__ico svg, ' +
-            '.settings-param.focus .settings-param__name, .settings-param.focus .settings-param__value, ' +
-            '.selectbox-item.focus .selectbox-item__title, .selectbox-item.focus .selectbox-item__subtitle, ' +
-            '.button.focus span, .button.focus svg, ' +
-            '.simple-button.focus span, .simple-button.focus svg, ' +
-            '.full-start__button.focus span, .full-start__button.focus svg { ' +
+            /* Таргетинг на КАЖДЫЙ внутренний тег внутри сфокусированного элемента */
+            'body .focus, body .focus div, body .focus span, body .focus svg, body .focus use, body .focus .menu__text, body .focus .settings-param__name { ' +
                 'color: #0f0f0f !important; ' +
                 'fill: #0f0f0f !important; ' +
                 'text-shadow: none !important; ' +
             '} ' +
             
             /* ПЛЕЕР YOUTUBE STYLE */
-            '.player-panel { background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.5) 70%, transparent 100%) !important; padding-bottom: 25px !important; border: none !important; } ' +
-            '.player-panel__timeline { height: 5px !important; border-radius: 3px !important; background: rgba(255,255,255,0.2) !important; } ' +
-            '.player-panel__peding { background: rgba(255,255,255,0.4) !important; } ' +
-            '.player-panel__position { background-color: #ff0000 !important; border-radius: 3px !important; } ' +
-            '.player-panel__position div { background-color: #ff0000 !important; box-shadow: 0 0 10px #ff0000 !important; width: 14px !important; height: 14px !important; top: -4.5px !important; border-radius: 50% !important; } ' +
-            '.player-info__name { font-size: 1.8em !important; font-weight: 600 !important; text-shadow: 0 2px 6px rgba(0,0,0,0.9) !important; } ' +
+            'body .player-panel { background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.5) 70%, transparent 100%) !important; padding-bottom: 25px !important; border: none !important; } ' +
+            'body .player-panel__timeline { height: 5px !important; border-radius: 3px !important; background: rgba(255,255,255,0.2) !important; } ' +
+            'body .player-panel__peding { background: rgba(255,255,255,0.4) !important; } ' +
+            'body .player-panel__position { background-color: #ff0000 !important; border-radius: 3px !important; } ' +
+            'body .player-panel__position div { background-color: #ff0000 !important; box-shadow: 0 0 10px #ff0000 !important; width: 14px !important; height: 14px !important; top: -4.5px !important; border-radius: 50% !important; } ' +
+            'body .player-info__name { font-size: 1.8em !important; font-weight: 600 !important; text-shadow: 0 2px 6px rgba(0,0,0,0.9) !important; } ' +
             
-            /* ОТКЛЮЧЕНИЕ СТЕКЛА ДЛЯ TIZEN ПРОИЗВОДИТЕЛЬНОСТИ */
-            '.glass, .settings__content, .selectbox__content, .modal__content { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background-color: #141414 !important; border: 1px solid #2a2a2a !important; box-shadow: 20px 0 50px rgba(0,0,0,0.9) !important; } ' +
+            /* ОТКЛЮЧЕНИЕ СТЕКЛА ДЛЯ ТВ ПРОИЗВОДИТЕЛЬНОСТИ */
+            'body .glass, body .settings__content, body .selectbox__content, body .modal__content { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background-color: #141414 !important; border: 1px solid #2a2a2a !important; box-shadow: 20px 0 50px rgba(0,0,0,0.9) !important; } ' +
             
             /* АППАРАТНОЕ УСКОРЕНИЕ */
-            '.selector, .card, .layer--render { transform: translateZ(0); -webkit-transform: translateZ(0); will-change: transform; } ' +
+            'body .selector, body .card, body .layer--render { transform: translateZ(0); -webkit-transform: translateZ(0); will-change: transform; } ' +
             '::-webkit-scrollbar { width: 0px !important; background: transparent !important; }';
 
         if (style.styleSheet) { style.styleSheet.cssText = cssText; } 
@@ -215,8 +213,8 @@
     Object.defineProperty(window, 'Lampa', {
         get: function() { return _lampaStore; },
         set: function(val) {
-            if (val && !val.__ytPremiumTizen) {
-                val.__ytPremiumTizen = true;
+            if (val && !val.__ytPremiumCSSFix) {
+                val.__ytPremiumCSSFix = true;
                 var _accountRef = val.Account;
                 Object.defineProperty(val, 'Account', {
                     get: function() { return _accountRef; },
@@ -288,12 +286,16 @@
     function boot() {
         injectPremiumDesign();
         enforceCoreSettings();
-        setInterval(enforceCoreSettings, 2000);
+        // Циклическое добавление стилей (если Lampa их сбросит при навигации)
+        setInterval(function() {
+            injectPremiumDesign();
+            enforceCoreSettings();
+        }, 1500);
     }
 
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot); } 
     else { boot(); }
 
-    log('✅ Tizen UI исправления успешно применены.');
+    log('✅ YouTube Premium Edition загружен с абсолютным приоритетом CSS.');
 
 })();

@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Lampa Gold: Diamond & OLED Edition
-// @namespace    lampa-gold-diamond
-// @version      999.0.0
-// @description  Абсолютный обход, кэш, Fast-Stream и премиальный True OLED дизайн
+// @name         Lampa: YouTube Premium & OLED Edition
+// @namespace    lampa-youtube-premium
+// @version      1000.0.0
+// @description  Дизайн уровня YouTube TV, абсолютный черный фон (OLED), оптимизация Tizen и обход подписок
 // @match        *://*/*
 // @run-at       document-start
 // @grant        none
@@ -11,14 +11,14 @@
 (function() { 
     'use strict';
 
-    if (window.__lampaDiamondLoaded) return;
-    window.__lampaDiamondLoaded = true;
+    if (window.__lampaYouTubePremium) return;
+    window.__lampaYouTubePremium = true;
 
-    var LOG_PREFIX = '💎 [Lampa Diamond]';
+    var LOG_PREFIX = '🔴 [Lampa Premium]';
     function log(msg) { if (window.console && console.log) console.log(LOG_PREFIX + ' ' + msg); }
 
     // ============================================================
-    // 1. КОНФИГУРАЦИЯ СИСТЕМЫ
+    // 1. КОНФИГУРАЦИЯ СИСТЕМЫ И БЛОКИРОВОК
     // ============================================================
     var CONFIG = {
         AD_DOMAINS: [
@@ -40,12 +40,12 @@
     function getFakePremium() {
         return {
             premium: true, pro: true, vip: true, gold: true, active: true,
-            end: '2099-12-31', verification_hash: 'diamond_bypass_' + new Date().getTime(),
+            end: '2099-12-31', verification_hash: 'yt_premium_bypass_' + new Date().getTime(),
             account: { 
                 premium: true, 
-                profile: { id: 777, age: 99, child: false }, // Открывает весь контент 18+
-                token: 'diamond_token_' + Math.random().toString(36).substring(2), 
-                username: 'Diamond_VIP' 
+                profile: { id: 777, age: 99, child: false }, // Открывает весь 18+ контент
+                token: 'premium_token_' + Math.random().toString(36).substring(2), 
+                username: 'Premium_User' 
             },
             status: 200
         };
@@ -59,41 +59,47 @@
     }
 
     // ============================================================
-    // 2. ИНЖЕНЕРИЯ ИНТЕРФЕЙСА (TRUE OLED & PREMIUM DESIGN)
+    // 2. ИНЖЕНЕРИЯ ИНТЕРФЕЙСА (YOUTUBE TV DESIGN)
     // ============================================================
     function injectPremiumDesign() {
-        if (document.getElementById('diamond-css')) return;
+        if (document.getElementById('yt-premium-css')) return;
         var style = document.createElement('style');
-        style.id = 'diamond-css';
+        style.id = 'yt-premium-css';
         style.type = 'text/css';
         
         var cssText = 
-            /* === БЛОКИРОВКА РЕКЛАМЫ === */
+            /* === БЛОКИРОВКА РЕКЛАМЫ (Скрытие из интерфейса) === */
             CONFIG.AD_SELECTORS.join(', ') + ' { display: none !important; opacity: 0 !important; visibility: hidden !important; width: 0 !important; height: 0 !important; pointer-events: none !important; position: absolute !important; left: -9999px !important; } ' +
             
-            /* === TRUE OLED BACKGROUNDS === */
+            /* === TRUE OLED BLACK === */
             'body, .wrap, .layer--width, .scroll__content, .menu, .settings, .player, .search__body, .console__body { background-color: #000000 !important; background: #000000 !important; } ' +
             '.ad-preroll__bg, .player-video__advert { background: #000000 !important; } ' +
             
-            /* === ОПТИМИЗАЦИЯ СТЕКЛА (ОТКЛЮЧЕНИЕ ТОРМОЗОВ) === */
-            '.glass, .settings__content, .selectbox__content, .modal__content { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: #0c0c0c !important; border: 1px solid #222 !important; box-shadow: 0 15px 30px rgba(0,0,0,0.9) !important; } ' +
+            /* === СОВРЕМЕННОЕ МЕНЮ И НАСТРОЙКИ (Идеальная читаемость) === */
+            '.menu__item, .settings-param, .selectbox-item, .button, .simple-button { border-radius: 8px !important; transition: transform 0.15s ease, background 0.15s ease !important; margin: 2px 10px !important; width: calc(100% - 20px) !important; } ' +
+            // Состояние фокуса: белый фон, черный текст и черные иконки (Стиль YouTube/Apple TV)
+            '.menu__item.focus, .settings-param.focus, .selectbox-item.focus, .button.focus, .simple-button.focus { background: #f1f1f1 !important; transform: scale(1.04) !important; box-shadow: 0 8px 20px rgba(255,255,255,0.15) !important; z-index: 99; } ' +
+            // Принудительная перекраска ВСЕГО текста и иконок внутри активного элемента в черный цвет
+            '.menu__item.focus *, .settings-param.focus *, .selectbox-item.focus *, .button.focus *, .simple-button.focus * { color: #0f0f0f !important; fill: #0f0f0f !important; text-shadow: none !important; } ' +
             
-            /* === СОВРЕМЕННЫЕ КАРТОЧКИ ФИЛЬМОВ === */
-            '.card__view { border-radius: 12px !important; overflow: hidden !important; box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important; } ' +
-            '.card__age { background: rgba(229, 169, 61, 0.95) !important; color: #000 !important; font-weight: 800 !important; border-radius: 4px !important; padding: 2px 6px !important; } ' +
+            /* === КАРТОЧКИ ФИЛЬМОВ (Плавность и фокус) === */
+            '.card__view { border-radius: 12px !important; overflow: hidden !important; transition: transform 0.2s ease, box-shadow 0.2s ease !important; background: #111 !important; } ' +
+            '.card.focus .card__view { transform: scale(1.06) !important; box-shadow: 0 0 0 4px #f1f1f1, 0 12px 30px rgba(255,255,255,0.1) !important; border: none !important; } ' +
+            // Красный акцент для бейджей 
+            '.card__age, .torrent-item__bitrate { background: #ff0000 !important; color: #ffffff !important; font-weight: bold !important; border-radius: 4px !important; padding: 2px 6px !important; } ' +
             '.card { margin-bottom: 15px !important; } ' +
             
-            /* === ЭЛИТНЫЙ ФОКУС (GOLD GLOW) === */
-            '.selector.focus { transform: scale(1.06) !important; box-shadow: 0 0 0 3px #e5a93d, 0 10px 25px rgba(229, 169, 61, 0.2) !important; border-radius: 12px !important; z-index: 99; transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.2s ease !important; background-color: rgba(229, 169, 61, 0.1) !important; } ' +
-            '.card.focus .card__view { box-shadow: none !important; border: none !important; } ' +
-            '.menu__item.focus, .settings-param.focus { box-shadow: inset 4px 0 0 #e5a93d !important; background: linear-gradient(90deg, rgba(229,169,61,0.15) 0%, transparent 100%) !important; transform: scale(1.02) !important; border-radius: 0 !important; } ' +
+            /* === ПЛЕЕР В СТИЛЕ YOUTUBE === */
+            '.player-panel { background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 60%, transparent 100%) !important; padding-bottom: 25px !important; border: none !important; } ' +
+            '.player-panel__timeline { height: 5px !important; border-radius: 3px !important; background: rgba(255,255,255,0.2) !important; } ' +
+            '.player-panel__peding { background: rgba(255,255,255,0.4) !important; } ' +
+            // Красный прогресс-бар
+            '.player-panel__position { background: #ff0000 !important; border-radius: 3px !important; } ' +
+            '.player-panel__position div { background: #ff0000 !important; box-shadow: 0 0 10px #ff0000 !important; width: 14px !important; height: 14px !important; top: -4.5px !important; border-radius: 50% !important; } ' +
+            '.player-info__name { font-size: 1.6em !important; font-weight: 500 !important; text-shadow: 0 2px 4px rgba(0,0,0,0.9) !important; } ' +
             
-            /* === ПЛЕЕР ВО ВРЕМЯ ПРОСМОТРА === */
-            '.player-panel { background: linear-gradient(to top, #000000 0%, rgba(0,0,0,0.7) 40%, transparent 100%) !important; padding-bottom: 25px !important; border: none !important; } ' +
-            '.player-panel__timeline { height: 6px !important; border-radius: 3px !important; background: rgba(255,255,255,0.2) !important; } ' +
-            '.player-panel__position { background: #e5a93d !important; border-radius: 3px !important; } ' +
-            '.player-panel__position div { background: #ffffff !important; box-shadow: 0 0 12px #e5a93d, 0 0 6px #e5a93d !important; width: 14px !important; height: 14px !important; top: -4px !important; border-radius: 50% !important; } ' +
-            '.player-info__name { font-size: 1.5em !important; font-weight: 600 !important; text-shadow: 0 2px 4px rgba(0,0,0,0.8) !important; } ' +
+            /* === ОТКЛЮЧЕНИЕ "МЫЛЬНОГО СТЕКЛА" (Легкость для ТВ процессора) === */
+            '.glass, .settings__content, .selectbox__content, .modal__content { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: #0f0f0f !important; border: 1px solid #222 !important; } ' +
             
             /* === АППАРАТНОЕ УСКОРЕНИЕ === */
             '.selector, .card, .layer--render { transform: translateZ(0); -webkit-transform: translateZ(0); will-change: transform; } ' +
@@ -106,15 +112,19 @@
         
         (document.head || document.documentElement).appendChild(style);
         
-        // Защита от удаления
         try { Object.defineProperty(style, 'parentNode', { get: function() { return null; } }); style.remove = function(){}; } catch(e) {}
     }
 
     // ============================================================
-    // 3. СВЕРХБЫСТРАЯ СЕТЬ И API КЭШИРОВАНИЕ
+    // 3. БЕЗОПАСНЫЙ СЕТЕВОЙ ПЕРЕХВАТ (HLS.JS И СТРИМИНГ)
     // ============================================================
-    var apiCache = {};
-    var CACHE_TTL = 1000 * 60 * 5; // 5 минут
+    // В этой версии используется ES5 для максимальной скорости на Tizen
+
+    var origFreeze = Object.freeze;
+    Object.freeze = function(obj) {
+        if (obj && (obj.Permit || obj.premium !== undefined || obj.account_use !== undefined)) return obj;
+        return origFreeze(obj);
+    };
 
     var OrigXHR = window.XMLHttpRequest;
     if (OrigXHR) {
@@ -160,6 +170,7 @@
             };
             return xhr;
         };
+        // Необходимо для работы плеера hls.js (проверка instanceof)
         window.XMLHttpRequest.prototype = OrigXHR.prototype;
     }
 
@@ -171,8 +182,6 @@
                 if (typeof input === 'string') url = input.toLowerCase();
                 else if (input && input.url) url = input.url.toLowerCase();
 
-                var method = (init && init.method) ? init.method.toUpperCase() : 'GET';
-
                 if (url) {
                     if (checkMatch(url, CONFIG.AD_DOMAINS)) {
                         return Promise.resolve(new Response('{}', { status: 200 }));
@@ -182,51 +191,10 @@
                             status: 200, headers: { 'Content-Type': 'application/json' }
                         }));
                     }
-
-                    // Кэширование запросов каталога TMDB для моментального возврата назад
-                    if (method === 'GET' && (url.indexOf('tmdb') !== -1 || url.indexOf('cub') !== -1) && url.indexOf('account') === -1) {
-                        var now = new Date().getTime();
-                        if (apiCache[url] && (now - apiCache[url].timestamp < CACHE_TTL)) {
-                            return Promise.resolve(new Response(apiCache[url].data, {
-                                status: 200, headers: { 'Content-Type': 'application/json' }
-                            }));
-                        }
-                        return origFetch.apply(this, arguments).then(function(response) {
-                            var resClone = response.clone();
-                            resClone.text().then(function(textData) {
-                                try { JSON.parse(textData); apiCache[url] = { data: textData, timestamp: new Date().getTime() }; } catch(e) {}
-                            });
-                            return response;
-                        });
-                    }
                 }
             } catch(e) {}
             return origFetch.apply(this, arguments);
         };
-    }
-
-    if (window.WebSocket) {
-        var OrigWebSocket = window.WebSocket;
-        window.WebSocket = function(url, protocols) {
-            var ws = protocols ? new OrigWebSocket(url, protocols) : new OrigWebSocket(url);
-            var origSend = ws.send;
-            ws.send = function(data) {
-                if (typeof data === 'string' && data.indexOf('premium') !== -1) {
-                    setTimeout(function() {
-                        try {
-                            var event = document.createEvent('Event');
-                            event.initEvent('message', false, false);
-                            event.data = JSON.stringify({ type: 'premium_status', data: getFakePremium() });
-                            ws.dispatchEvent(event);
-                        } catch(e) {}
-                    }, 50);
-                    return;
-                }
-                return origSend.apply(this, arguments);
-            };
-            return ws;
-        };
-        window.WebSocket.prototype = OrigWebSocket.prototype;
     }
 
     // ============================================================
@@ -236,8 +204,8 @@
     Object.defineProperty(window, 'Lampa', {
         get: function() { return _lampaStore; },
         set: function(val) {
-            if (val && !val.__diamondLoaded) {
-                val.__diamondLoaded = true;
+            if (val && !val.__ytPremiumLoaded) {
+                val.__ytPremiumLoaded = true;
                 var _accountRef = val.Account;
                 Object.defineProperty(val, 'Account', {
                     get: function() { return _accountRef; },
@@ -259,7 +227,7 @@
         configurable: true
     });
 
-    // Отменяем долгую загрузку видео (Сброс рекламы)
+    // Моментальный запуск видео (Отключение ожидания рекламы)
     var origAppend = Element.prototype.appendChild;
     Element.prototype.appendChild = function(el) {
         try {
@@ -277,11 +245,12 @@
     // ============================================================
     // 5. ОПТИМИЗАТОР ДВИЖКА (THROTTLE & CORE SETTINGS)
     // ============================================================
+    // Защита процессора ТВ от залипания стрелок пульта
     var lastKeyTime = 0;
     window.addEventListener('keydown', function(e) {
         if (e.keyCode >= 37 && e.keyCode <= 40) {
             var now = new Date().getTime();
-            if (now - lastKeyTime < 60) { // Ограничение: не чаще 1 кадра навигации в 60мс
+            if (now - lastKeyTime < 60) { 
                 e.stopImmediatePropagation();
                 e.preventDefault();
                 return false;
@@ -320,6 +289,6 @@
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot); } 
     else { boot(); }
 
-    log('✅ Система загружена. Приятного просмотра в наилучшем качестве.');
+    log('✅ YouTube Premium Edition загружен.');
 
 })();

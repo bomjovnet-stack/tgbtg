@@ -1,269 +1,145 @@
+// ==UserScript==
+// @name         Lampa: ShowyPro VIP Bypass
+// @namespace    lampa-showypro-bypass
+// @version      1.0.0
+// @description  Локальный серверный эмулятор для обхода авторизации showypro.com/online.js
+// @match        *://*/*
+// @run-at       document-start
+// @grant        none
+// ==/UserScript==
+
 (function() {
     'use strict';
 
-    var FAKE_TOKEN = 'fa60590b-c35b-4636-bf7c-0b1a46548df6';
-    var FAKE_RESPONSE = { status: 'success', token: FAKE_TOKEN };
-    var FAKE_JSON = JSON.stringify(FAKE_RESPONSE);
+    if (window.__showyProBypass) return;
+    window.__showyProBypass = true;
+
+    const LOG_PREFIX = '🔓 [ShowyPro Bypass]';
+    const log = (...args) => console.log(LOG_PREFIX, ...args);
+
+    // Целевой домен плагина
+    const TARGET_DOMAIN = 'showypro.com';
+
+    // Шаблон успешного ответа сервера ShowyPro (эмуляция VIP)
+    // Структура адаптирована под типичные ответы закрытых балансеров Lampa
+    const getFakeShowyAuth = () => ({
+        status: true,
+        success: true,
+        vip: true,
+        premium: true,
+        is_vip: 1,
+        expire: 4102444800, // 2099 год в Unix Time
+        user: {
+            id: 9999,
+            login: "GodMode_User",
+            group: "VIP",
+            balance: "9999"
+        },
+        // Подмена токенов или ссылок на балансеры, если плагин требует их для плеера
+        token: "showypro_bypassed_token_" + Date.now(),
+        message: "Авторизация успешно пройдена"
+    });
 
     // ============================================================
-    // 1. Storage – всегда возвращаем поддельный токен
+    // 1. ПЕРЕХВАТ FETCH API
     // ============================================================
-    if (window.Lampa && window.Lampa.Storage) {
-        var origGet = window.Lampa.Storage.get;
-        window.Lampa.Storage.get = function(key, fallback) {
-            if (key === 'showy_token') return FAKE_TOKEN;
-            if (key === 'random_code') return '123456';
-            return origGet.call(this, key, fallback);
+    const origFetch = window.fetch;
+    if (origFetch) {
+        window.fetch = async function(input, init) {
+            try {
+                const url = (typeof input === 'string' ? input : input?.url || '').toLowerCase();
+                
+                // Ловим запросы только к ShowyPro
+                if (url.includes(TARGET_DOMAIN)) {
+                    // Перехватываем эндпоинты авторизации, проверки профиля и статуса
+                    if (url.includes('/auth') || url.includes('/check') || url.includes('/user') || url.includes('/profile') || url.includes('/api/vip')) {
+                        log('Перехвачен Fetch-запрос авторизации:', url);
+                        return new Response(JSON.stringify(getFakeShowyAuth()), {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error(LOG_PREFIX, 'Fetch Bypass Error:', e);
+            }
+            return origFetch.apply(this, arguments);
         };
-        window.Lampa.Storage.set('showy_token', FAKE_TOKEN, true);
+        // Маскировка
+        Object.defineProperty(window.fetch, 'name', { value: 'fetch', configurable: true });
     }
 
     // ============================================================
-    // 2. Перехват XMLHttpRequest (основной канал)
+    // 2. ПЕРЕХВАТ XMLHTTPREQUEST (XHR)
     // ============================================================
-    var OrigXHR = window.XMLHttpRequest;
+    const OrigXHR = window.XMLHttpRequest;
     if (OrigXHR) {
         window.XMLHttpRequest = function() {
-            var xhr = new OrigXHR();
-            var origOpen = xhr.open;
-            var origSend = xhr.send;
+            const xhr = new OrigXHR();
+            const origOpen = xhr.open;
+            const origSend = xhr.send;
 
-            xhr.open = function(method, url, async, user, pass) {
-                this._url = url;
+            xhr.open = function(method, url) {
+                this._interceptUrl = (typeof url === 'string' ? url.toLowerCase() : '');
                 return origOpen.apply(this, arguments);
             };
 
-            xhr.send = function(body) {
-                var url = this._url || '';
-                // Перехватываем все запросы к API авторизации и подписки
-                if (url && url.indexOf('showypro.com/api/') !== -1 &&
-                    (url.indexOf('/check_pro_auth/') !== -1 ||
-                     url.indexOf('/check_subscription/') !== -1 ||
-                     url.indexOf('/check_pro_code/') !== -1)) {
-                    console.log('[ShowyCrack] XHR intercepted:', url);
-                    var self = this;
-                    setTimeout(function() {
-                        // Устанавливаем свойства ответа
-                        self.status = 200;
-                        self.statusText = 'OK';
-                        self.response = FAKE_JSON;
-                        self.responseText = FAKE_JSON;
-                        // Вызываем события
-                        if (self.onreadystatechange) {
-                            self.readyState = 4;
-                            self.onreadystatechange();
+            xhr.send = function() {
+                try {
+                    const url = this._interceptUrl;
+                    if (url && url.includes(TARGET_DOMAIN)) {
+                        if (url.includes('/auth') || url.includes('/check') || url.includes('/user') || url.includes('/profile') || url.includes('/api/vip')) {
+                            log('Перехвачен XHR-запрос авторизации:', url);
+                            const self = this;
+                            
+                            // Эмулируем задержку сети и успешный ответ
+                            setTimeout(() => {
+                                Object.defineProperties(self, {
+                                    readyState: { value: 4 },
+                                    status: { value: 200 },
+                                    statusText: { value: 'OK' },
+                                    responseText: { value: JSON.stringify(getFakeShowyAuth()) },
+                                    response: { value: JSON.stringify(getFakeShowyAuth()) }
+                                });
+                                
+                                if (self.onload) self.onload();
+                                if (self.onreadystatechange) self.onreadystatechange();
+                            }, 50);
+                            return;
                         }
-                        if (self.onload) {
-                            self.onload();
-                        }
-                    }, 0);
-                    return;
-                }
-                // Перехват получения кода
-                if (url && url.indexOf('showypro.com/api/get_code/') !== -1) {
-                    console.log('[ShowyCrack] XHR get_code intercepted');
-                    var self = this;
-                    setTimeout(function() {
-                        self.status = 200;
-                        self.statusText = 'OK';
-                        var resp = JSON.stringify({ code: '123456' });
-                        self.response = resp;
-                        self.responseText = resp;
-                        if (self.onreadystatechange) {
-                            self.readyState = 4;
-                            self.onreadystatechange();
-                        }
-                        if (self.onload) self.onload();
-                    }, 0);
-                    return;
-                }
-                // Перехват оплаты
-                if (url && url.indexOf('showypro.com/api/plugin_liontech_payment/') !== -1) {
-                    console.log('[ShowyCrack] XHR payment intercepted');
-                    var self = this;
-                    setTimeout(function() {
-                        self.status = 200;
-                        self.statusText = 'OK';
-                        var resp = JSON.stringify({ status: 'success', payment_url: 'https://example.com' });
-                        self.response = resp;
-                        self.responseText = resp;
-                        if (self.onreadystatechange) {
-                            self.readyState = 4;
-                            self.onreadystatechange();
-                        }
-                        if (self.onload) self.onload();
-                    }, 0);
-                    return;
+                    }
+                } catch (e) {
+                    console.error(LOG_PREFIX, 'XHR Bypass Error:', e);
                 }
                 return origSend.apply(this, arguments);
             };
             return xhr;
         };
-        // Сохраняем прототип для совместимости
         window.XMLHttpRequest.prototype = OrigXHR.prototype;
     }
 
     // ============================================================
-    // 3. Перехват fetch
+    // 3. ПЕРЕХВАТ СОЗДАНИЯ DOM-СКРИПТОВ (Если параметры передаются в URL)
     // ============================================================
-    if (window.fetch) {
-        var origFetch = window.fetch;
-        window.fetch = function(input, init) {
-            var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-            if (url && url.indexOf('showypro.com/api/') !== -1 &&
-                (url.indexOf('/check_pro_auth/') !== -1 ||
-                 url.indexOf('/check_subscription/') !== -1 ||
-                 url.indexOf('/check_pro_code/') !== -1)) {
-                console.log('[ShowyCrack] fetch intercepted:', url);
-                return Promise.resolve(new Response(FAKE_JSON, { status: 200 }));
-            }
-            if (url && url.indexOf('showypro.com/api/get_code/') !== -1) {
-                return Promise.resolve(new Response(JSON.stringify({ code: '123456' }), { status: 200 }));
-            }
-            if (url && url.indexOf('showypro.com/api/plugin_liontech_payment/') !== -1) {
-                return Promise.resolve(new Response(JSON.stringify({ status: 'success', payment_url: 'https://example.com' }), { status: 200 }));
-            }
-            return origFetch.call(this, input, init);
-        };
-    }
-
-    // ============================================================
-    // 4. Перехват jQuery.ajax (если используется)
-    // ============================================================
-    if (window.jQuery && window.jQuery.ajax) {
-        var origAjax = window.jQuery.ajax;
-        window.jQuery.ajax = function(settings) {
-            var url = settings.url || '';
-            if (url && url.indexOf('showypro.com/api/') !== -1) {
-                if (url.indexOf('/check_pro_auth/') !== -1 ||
-                    url.indexOf('/check_subscription/') !== -1 ||
-                    url.indexOf('/check_pro_code/') !== -1) {
-                    console.log('[ShowyCrack] jQuery.ajax intercepted:', url);
-                    if (settings.success) settings.success(FAKE_RESPONSE, 'success');
-                    if (settings.complete) settings.complete(FAKE_RESPONSE, 'success');
-                    return;
-                }
-                if (url.indexOf('/api/get_code/') !== -1) {
-                    if (settings.success) settings.success({ code: '123456' });
-                    return;
-                }
-                if (url.indexOf('/api/plugin_liontech_payment/') !== -1) {
-                    if (settings.success) settings.success({ status: 'success', payment_url: 'https://example.com' });
-                    return;
+    const origAppend = Element.prototype.appendChild;
+    Element.prototype.appendChild = function(el) {
+        try {
+            if (el && el.tagName === 'SCRIPT' && el.src) {
+                let src = el.src;
+                if (src.includes(TARGET_DOMAIN) && src.includes('online.js')) {
+                    // Если online.js требует передачи токена прямо в URL (например, online.js?token=123)
+                    // Мы можем модифицировать ссылку на лету
+                    if (!src.includes('token=') && !src.includes('vip=')) {
+                        const separator = src.includes('?') ? '&' : '?';
+                        el.src = src + separator + 'vip=1&token=god_mode_bypassed';
+                        log('Модифицирован URL загрузки скрипта:', el.src);
+                    }
                 }
             }
-            return origAjax.call(this, settings);
-        };
-    }
+        } catch (e) {}
+        return origAppend.apply(this, arguments);
+    };
 
-    // ============================================================
-    // 5. Перехват Lampa.Reguest (используется в плагине)
-    // ============================================================
-    if (window.Lampa && window.Lampa.Reguest && window.Lampa.Reguest.prototype) {
-        var origNative = window.Lampa.Reguest.prototype.native;
-        var origSilent = window.Lampa.Reguest.prototype.silent;
+    log('Серверный эмулятор успешно запущен. Мониторинг трафика активен.');
 
-        function isAuthUrl(url) {
-            return url && url.indexOf('showypro.com/api/') !== -1 &&
-                (url.indexOf('/check_pro_auth/') !== -1 ||
-                 url.indexOf('/check_subscription/') !== -1 ||
-                 url.indexOf('/check_pro_code/') !== -1);
-        }
-
-        function fakeResponse(success) {
-            if (success) success(FAKE_RESPONSE);
-        }
-
-        window.Lampa.Reguest.prototype.native = function(url, success, error, data, options) {
-            if (isAuthUrl(url)) {
-                console.log('[ShowyCrack] Lampa.Reguest.native:', url);
-                fakeResponse(success);
-                return;
-            }
-            if (url && url.indexOf('showypro.com/api/get_code/') !== -1) {
-                if (success) success({ code: '123456' });
-                return;
-            }
-            if (url && url.indexOf('showypro.com/api/plugin_liontech_payment/') !== -1) {
-                if (success) success({ status: 'success', payment_url: 'https://example.com' });
-                return;
-            }
-            return origNative.call(this, url, success, error, data, options);
-        };
-
-        window.Lampa.Reguest.prototype.silent = function(url, success, error, data, options) {
-            if (isAuthUrl(url)) {
-                console.log('[ShowyCrack] Lampa.Reguest.silent:', url);
-                fakeResponse(success);
-                return;
-            }
-            if (url && url.indexOf('showypro.com/api/get_code/') !== -1) {
-                if (success) success({ code: '123456' });
-                return;
-            }
-            if (url && url.indexOf('showypro.com/api/plugin_liontech_payment/') !== -1) {
-                if (success) success({ status: 'success', payment_url: 'https://example.com' });
-                return;
-            }
-            return origSilent.call(this, url, success, error, data, options);
-        };
-    }
-
-    // ============================================================
-    // 6. Блокировка модальных окон авторизации
-    // ============================================================
-    if (window.Lampa && window.Lampa.Modal) {
-        var origModalOpen = window.Lampa.Modal.open;
-        window.Lampa.Modal.open = function(params) {
-            var html = params.html && params.html[0] ? params.html[0].outerHTML : '';
-            if (html && (html.indexOf('showybot') !== -1 ||
-                         html.indexOf('Продлите PRO-подписку') !== -1 ||
-                         html.indexOf('Авторизация') !== -1 ||
-                         html.indexOf('подписку') !== -1 ||
-                         html.indexOf('Подписка') !== -1)) {
-                console.log('[ShowyCrack] Блокировка модального окна');
-                if (params.onBack) params.onBack();
-                return;
-            }
-            return origModalOpen.call(this, params);
-        };
-    }
-
-    // ============================================================
-    // 7. Принудительное завершение авторизации (если функция доступна)
-    // ============================================================
-    if (window.showyFinishAuth) {
-        window.showyFinishAuth(FAKE_TOKEN);
-    }
-
-    // ============================================================
-    // 8. Подмена премиум-статуса в Lampa и CUB
-    // ============================================================
-    if (window.Lampa && window.Lampa.Account) {
-        window.Lampa.Account.is_premium = true;
-        if (typeof window.Lampa.Account.hasPremium === 'function') {
-            window.Lampa.Account.hasPremium = function() { return true; };
-        }
-        if (window.Lampa.Account.Permit) {
-            try {
-                Object.defineProperty(window.Lampa.Account.Permit, 'access', { get: function() { return true; }, configurable: false });
-                Object.defineProperty(window.Lampa.Account.Permit, 'sync', { get: function() { return true; }, configurable: false });
-            } catch(e) {
-                window.Lampa.Account.Permit.access = true;
-                window.Lampa.Account.Permit.sync = true;
-            }
-        }
-    }
-    if (window.CUB) {
-        window.CUB.premium = true;
-        window.CUB.pro = true;
-        window.CUB.vip = true;
-        window.CUB.ads = false;
-        window.CUB.advert = function() { return false; };
-    }
-    if (window.Lampa && window.Lampa.Personal) {
-        window.Lampa.Personal.confirm = function() { return true; };
-    }
-
-    console.log('[ShowyCrack] Обход Showy RU полностью активирован');
 })();

@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         ShowyPro Ultimate Bypass (99 lvl)
-// @namespace    showypro-ultimate-bypass
-// @version      4.0.0
-// @description  Гарантированный обход авторизации ShowyPro для плагина Showy RU
+// @name         ShowyPro VIP Bypass (Real Token Injection)
+// @namespace    showypro-real-token
+// @version      7.0.0
+// @description  Эмуляция успешной авторизации с подстановкой реального VIP-токена
 // @match        *://*/*
 // @run-at       document-start
 // @grant        none
@@ -10,34 +10,23 @@
 
 (function() {
     'use strict';
+    if (window.__showyProRealToken) return;
+    window.__showyProRealToken = true;
 
-    if (window.__showyProUltimate) return;
-    window.__showyProUltimate = true;
-
-    const LOG_PREFIX = '🔓 [ShowyPro Ultimate]';
+    const LOG_PREFIX = '🎫 [ShowyPro RealToken]';
     const log = (...args) => console.log(LOG_PREFIX, ...args);
 
+    const REAL_VIP_TOKEN = '22cf26b7-c0bf-448b-b9f8-0e072029ff2c'; // ваш актуальный токен
+    const FAKE_CODE = '123456'; // любой код, который будет показан (но окно не появится)
+
     const TARGET = 'showypro.com';
-    const API_PATHS = ['/api/get_code', '/api/check_pro_code', '/api/check_pro_auth',
-                       '/api/delete_token', '/api/check_subscription', '/api/plugin_liontech_payment'];
+    const INTERCEPT_PATHS = [
+        '/api/get_code',
+        '/api/check_pro_code',
+        '/api/check_pro_auth'
+    ];
 
-    // 1. Максимально ранняя инъекция токена
-    const FAKE_TOKEN = 'ultimate_bypass_token_' + Date.now();
-    try {
-        localStorage.setItem('showy_token', FAKE_TOKEN);
-        sessionStorage.setItem('showy_token', FAKE_TOKEN);
-        // Пробуем сразу записать в глобальный Lampa.Storage, если он появится
-        const storageInterval = setInterval(() => {
-            if (window.Lampa && window.Lampa.Storage) {
-                window.Lampa.Storage.set('showy_token', FAKE_TOKEN);
-                clearInterval(storageInterval);
-            }
-        }, 50);
-        // Остановим попытки через 5 секунд
-        setTimeout(() => clearInterval(storageInterval), 5000);
-    } catch(e) {}
-
-    // 2. Перехват на уровне прототипа XMLHttpRequest (надежнее конструктора)
+    // 1. Перехват XHR (основной способ связи в Lampa)
     const origOpen = XMLHttpRequest.prototype.open;
     const origSend = XMLHttpRequest.prototype.send;
 
@@ -47,44 +36,58 @@
     };
 
     XMLHttpRequest.prototype.send = function() {
-        const url = this._interceptUrl;
-        if (url && url.includes(TARGET) && API_PATHS.some(p => url.includes(p))) {
-            log('✅ Перехвачен XHR:', url);
-            const xhr = this;
-            // Блокируем реальный запрос и эмулируем ответ
+        const xhr = this;
+        const url = this._interceptUrl || '';
+
+        if (url.includes(TARGET) && INTERCEPT_PATHS.some(p => url.includes(p))) {
+            log('✅ Эмуляция запроса:', url);
+            const clean = url.split('?')[0];
+            let responseData = {};
+
+            if (clean.includes('/api/get_code')) {
+                responseData = { code: FAKE_CODE };
+            } else if (clean.includes('/api/check_pro_code')) {
+                responseData = { status: 'success', token: REAL_VIP_TOKEN };
+            } else if (clean.includes('/api/check_pro_auth')) {
+                responseData = { status: true, vip: true, premium: true, is_vip: 1, expire: 4102444800 };
+            }
+
+            // Эмуляция асинхронного ответа
             setTimeout(() => {
-                const fakeData = getFakeResponse(url);
                 Object.defineProperties(xhr, {
-                    readyState: { value: 4, writable: false },
-                    status: { value: 200, writable: false },
-                    statusText: { value: 'OK', writable: false },
-                    responseText: { value: JSON.stringify(fakeData), writable: false }
+                    readyState: { value: 4 },
+                    status: { value: 200 },
+                    statusText: { value: 'OK' },
+                    responseText: { value: JSON.stringify(responseData) }
                 });
                 if (xhr.responseType === '' || xhr.responseType === 'text') {
                     Object.defineProperty(xhr, 'response', { value: xhr.responseText });
                 } else if (xhr.responseType === 'json') {
-                    Object.defineProperty(xhr, 'response', { value: fakeData });
+                    Object.defineProperty(xhr, 'response', { value: responseData });
                 }
-                // Вызываем колбэки
                 if (xhr.onload) xhr.onload();
                 if (xhr.onreadystatechange) xhr.onreadystatechange();
-                // Для jQuery: диспатчим событие load
                 const event = new Event('load');
                 xhr.dispatchEvent(event);
             }, 10);
-            return; // реальный send не вызываем
+            return; // реальный запрос не уходит
         }
         return origSend.apply(this, arguments);
     };
 
-    // 3. Перехват fetch на всякий случай
+    // 2. Перехват fetch (на случай, если используется)
     const origFetch = window.fetch;
     if (origFetch) {
         window.fetch = function(input, init) {
             const url = (typeof input === 'string' ? input : input?.url || '').toLowerCase();
-            if (url.includes(TARGET) && API_PATHS.some(p => url.includes(p))) {
-                log('✅ Перехвачен Fetch:', url);
-                return Promise.resolve(new Response(JSON.stringify(getFakeResponse(url)), {
+            if (url.includes(TARGET) && INTERCEPT_PATHS.some(p => url.includes(p))) {
+                log('✅ Fetch эмуляция:', url);
+                const clean = url.split('?')[0];
+                let responseData = {};
+                if (clean.includes('/api/get_code')) responseData = { code: FAKE_CODE };
+                else if (clean.includes('/api/check_pro_code')) responseData = { status: 'success', token: REAL_VIP_TOKEN };
+                else if (clean.includes('/api/check_pro_auth')) responseData = { status: true, vip: true, premium: true, is_vip: 1, expire: 4102444800 };
+                return Promise.resolve(new Response(JSON.stringify(responseData), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' }
                 }));
@@ -93,46 +96,24 @@
         };
     }
 
-    // 4. Нейтрализация модальных окон авторизации (уничтожаем функции, если они появятся)
-    function neutralizeUI() {
-        if (!window.Lampa || !window.Lampa.Modal) return;
-        // Безопасно переопределим показ окна авторизации
-        if (!window.__showyModalNeutralized) {
-            window.__showyModalNeutralized = true;
-            const origModalOpen = window.Lampa.Modal.open;
-            window.Lampa.Modal.open = function(config) {
-                // Если это окно с кодом или подпиской – игнорируем
+    // 3. Блокировка модальных окон на случай, если плагин всё же попытается их показать
+    const blockUI = () => {
+        if (window.Lampa && window.Lampa.Modal && !window.__showyUIBlocked) {
+            window.__showyUIBlocked = true;
+            const origModalOpen = Lampa.Modal.open;
+            Lampa.Modal.open = function(config) {
                 if (config && config.html && (
                     config.html.includes('randomCodeDisplay') ||
                     config.html.includes('showybot') ||
-                    config.html.includes('showideo.ru') ||
                     config.html.includes('subscription'))) {
-                    log('🚫 Заблокировано окно авторизации/оплаты');
+                    log('🚫 Заблокировано окно авторизации');
                     return;
                 }
                 return origModalOpen.apply(this, arguments);
             };
         }
-    }
-    setInterval(neutralizeUI, 300);
+    };
+    setInterval(blockUI, 300);
 
-    function getFakeResponse(url) {
-        const clean = url.split('?')[0];
-        if (clean.includes('/api/check_pro_auth')) {
-            return { status: true, vip: true, premium: true, is_vip: 1, expire: 4102444800 };
-        }
-        if (clean.includes('/api/check_subscription')) {
-            return { status: 'success' };
-        }
-        if (clean.includes('/api/check_pro_code')) {
-            return { status: 'success', token: FAKE_TOKEN };
-        }
-        if (clean.includes('/api/get_code')) {
-            return { code: '000000' };
-        }
-        // Остальные – просто успех
-        return { status: true };
-    }
-
-    log('🚀 Активирован. Авторизация ShowyPro нейтрализована.');
+    log('🎉 Готово! Плагин Showy получит реальный VIP-токен автоматически.');
 })();

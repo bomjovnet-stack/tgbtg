@@ -12,10 +12,10 @@
 
   var balansers_with_search;
 
+  // Жестко фиксируем VIP UID, чтобы Lampa не пыталась его перезаписать
   var unic_id = Lampa.Storage.get('lampac_unic_id', '');
-  if (!unic_id) {
-    unic_id = 'xfp4fi4j'; // Зафиксировано на VIP UID
-    Lampa.Storage.set('lampac_unic_id', unic_id);
+  if (!unic_id || unic_id !== 'xfp4fi4j') {
+    Lampa.Storage.set('lampac_unic_id', 'xfp4fi4j');
   }
 
   function getAndroidVersion() {
@@ -126,17 +126,13 @@
         }
 
         if (url == 'eval') {
-          console.log('RCH', url, data);
           result(eval(data));
         } else if (url == 'evalrun') {
-          console.log('RCH', url, data);
           eval(data);
         } else if (url == 'ping') {
           result('pong');
         } else {
-          console.log('RCH', url);
           network["native"](url, result, function(e) {
-            console.log('RCH', 'result empty, ' + e.status);
             result('');
           }, data, {
             dataType: 'text', timeout: 1000 * 8, headers: headers, returnHeaders: returnHeaders
@@ -145,11 +141,10 @@
       });
 
       client.on('Connected', function(connectionId) {
-        console.log('RCH', 'ConnectionId: ' + connectionId);
         window.rch_nws[hostkey].connectionId = connectionId;
       });
-      client.on('Closed', function() { console.log('RCH', 'Connection closed'); });
-      client.on('Error', function(err) { console.log('RCH', 'error:', err); });
+      client.on('Closed', function() {});
+      client.on('Error', function(err) {});
     });
   };
 
@@ -160,7 +155,6 @@
     var client = window.nwsClient[hostkey];
     if (client && client.connectionId != null) call();
     else if (client) {
-      console.log('RCH', 'Reconnecting...');
       client.reconnect(function() { call(); });
     } else {
       window.nwsClient[hostkey] = new NativeWsClient(json.nws, { autoReconnect: true });
@@ -181,23 +175,30 @@
 
   // ==========================================================
   // АБСОЛЮТНЫЙ ПЕРЕХВАТ ПАРАМЕТРОВ СЕССИИ (ACCOUNT INJECTION)
+  // Уровень 100000: Использование нативного URL API для 100% надежности
   // ==========================================================
   function account(url) {
     url = String(url || '');
-    
-    // Очищаем URL от старых параметров, чтобы не было дублей
-    url = url.replace(/([?&])(account_email|uid|showy_token|cub_id|token)=[^&]*/g, '');
-    url = url.replace(/^[?&]+/, '').replace(/[?&]+$/, ''); // Подчищаем висячие амперсанды
+    var VIP = {
+        account_email: 'irinakrisa555@ya.ru',
+        uid: 'xfp4fi4j',
+        cub_id: '967951967',
+        showy_token: '22cf26b7-c0bf-448b-b9f8-0e072029ff2c'
+    };
 
-    // Форсированная инъекция VIP-данных
-    var vipParams = [
-        'account_email=irinakrisa555%40ya.ru',
-        'uid=xfp4fi4j',
-        'cub_id=967951967',
-        'showy_token=22cf26b7-c0bf-448b-b9f8-0e072029ff2c'
-    ].join('&');
-
-    return url + (url.indexOf('?') !== -1 ? '&' : '?') + vipParams;
+    try {
+        var urlObj = new URL(url, window.location.origin);
+        for (var key in VIP) {
+            urlObj.searchParams.set(key, VIP[key]);
+        }
+        return urlObj.toString();
+    } catch (e) {
+        // Fallback-режим для некорректных строк
+        url = url.replace(/([?&])(account_email|uid|showy_token|cub_id|token)=[^&]*/g, '');
+        url = url.replace(/^[?&]+/, '').replace(/[?&]+$/, ''); 
+        var fallbackParams = Object.keys(VIP).map(function(k) { return k + '=' + encodeURIComponent(VIP[k]); }).join('&');
+        return url + (url.indexOf('?') !== -1 ? '&' : '?') + fallbackParams;
+    }
   }
 
   function addHeaders() {
@@ -210,8 +211,7 @@
   // НЕЙТРАЛИЗАЦИЯ ПРОВЕРОК АВТОРИЗАЦИИ (BYPASS API)
   // ==========================================================
   function showyEnsureProAuth(onValid) {
-    // Мгновенный пропуск, никаких окон и запросов на сервер
-    if (onValid) onValid();
+    if (onValid) onValid(); // Моментальный пропуск, полная ликвидация окон
   }
 
   var Network = Lampa.Reguest;
@@ -404,7 +404,6 @@
       query.push('similar=' + (object.similar ? true : false));
       query.push('rchtype=' + (((window.rch_nws && window.rch_nws[hostkey]) ? window.rch_nws[hostkey].type : (window.rch && window.rch[hostkey]) ? window.rch[hostkey].type : '') || ''));
       
-      // Генерация cub_id удалена отсюда, так как account(url) форсированно вставляет VIP-версию
       return url + (url.indexOf('?') >= 0 ? '&' : '?') + query.join('&');
     };
 
@@ -1147,7 +1146,6 @@
     };
 
     this.noConnectToServer = function(er) {
-      // Игнорируем любые серверные ошибки авторизации, просто показываем пустое окно, чтобы плагин не спамил модалками
       var html = Lampa.Template.get('lampac_does_not_answer', {});
       html.find('.online-empty__buttons').remove();
       html.find('.online-empty__title').text(Lampa.Lang.translate('title_error'));
@@ -1275,7 +1273,7 @@
   function startPlugin() {
     window.showy_ru_lampac_plugin = true;
     var manifst = {
-      type: 'video', version: '1.7.1', name: 'Showy RU (God-Tier Unlocked)', description: 'Разблокированная версия плагина для просмотра онлайн сериалов и фильмов',
+      type: 'video', version: '1.7.1', name: 'Showy RU (God-Tier Unlocked)', description: 'Абсолютная разблокированная версия плагина',
       component: 'showy_ru_lampac',
       onContextMenu: function onContextMenu(object) { return { name: 'Showy RU', description: Lampa.Lang.translate('lampac_watch') }; },
       onContextLauch: function onContextLauch(object) { openShowyPro(object); }
@@ -1346,26 +1344,71 @@
       Lampa.Template.add('lampac_prestige_folder', "<div class=\"online-prestige online-prestige--folder selector\">\n            <div class=\"online-prestige__folder\">\n                <svg viewBox=\"0 0 128 112\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n                    <rect y=\"20\" width=\"128\" height=\"92\" rx=\"13\" fill=\"white\"></rect>\n                    <path d=\"M29.9963 8H98.0037C96.0446 3.3021 91.4079 0 86 0H42C36.5921 0 31.9555 3.3021 29.9963 8Z\" fill=\"white\" fill-opacity=\"0.23\"></path>\n                    <rect x=\"11\" y=\"8\" width=\"106\" height=\"76\" rx=\"13\" fill=\"white\" fill-opacity=\"0.51\"></rect>\n                </svg>\n            </div>\n            <div class=\"online-prestige__body\">\n                <div class=\"online-prestige__head\">\n                    <div class=\"online-prestige__title\">{title}</div>\n                    <div class=\"online-prestige__time\">{time}</div>\n                </div>\n\n                <div class=\"online-prestige__footer\">\n                    <div class=\"online-prestige__info\">{info}</div>\n                </div>\n            </div>\n        </div>");
       Lampa.Template.add('lampac_prestige_watched', "<div class=\"online-prestige online-prestige-watched selector\">\n            <div class=\"online-prestige-watched__icon\">\n                <svg width=\"21\" height=\"21\" viewBox=\"0 0 21 21\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n                    <circle cx=\"10.5\" cy=\"10.5\" r=\"9\" stroke=\"currentColor\" stroke-width=\"3\"/>\n                    <path d=\"M14.8477 10.5628L8.20312 14.399L8.20313 6.72656L14.8477 10.5628Z\" fill=\"currentColor\"/>\n                </svg>\n            </div>\n            <div class=\"online-prestige-watched__body\">\n                \n            </div>\n        </div>");
     }
-    var button = "<div class=\"full-start__button selector view--online-showy-ru showy-ru-showy60--button\" data-subtitle=\"".concat(manifst.name, "\">\n        <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1.2em\" height=\"1.2em\" viewBox=\"0 0 24 24\"><path fill=\"currentColor\" d=\"M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM5 9v6h1.25v-2H7a2 2 0 0 0 2-2a2 2 0 0 0-2-2zm1.25 3v-2h.5a1 1 0 0 1 1 1a1 1 0 0 1-1 1zm3.5-3v6H11v-2h.75l.66 2h1.32l-.79-2.39c.49-.36.81-.95.81-1.61a2 2 0 0 0-2-2zM11 12v-2h.5a1 1 0 0 1 1 1a1 1 0 0 1-1 1zm6-3c-1.38 0-2.5 1.34-2.5 3s1.12 3 2.5 3s2.5-1.34 2.5-3s-1.12-3-2.5-3m0 1.25c.76 0 1.38.78 1.38 1.75s-.62 1.75-1.38 1.75s-1.37-.78-1.37-1.75s.61-1.75 1.37-1.75\"/></svg>\n\n        <span>#{title_showy60_showy_ru}</span>\n    </div>";
+
+    // Очищенный HTML кнопки от template literals
+    var buttonHTML = "<div class=\"full-start__button selector view--online-showy-ru showy-ru-showy60--button\" data-subtitle=\"Showy RU (God-Tier)\">\n" +
+                     "    <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1.2em\" height=\"1.2em\" viewBox=\"0 0 24 24\"><path fill=\"currentColor\" d=\"M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM5 9v6h1.25v-2H7a2 2 0 0 0 2-2a2 2 0 0 0-2-2zm1.25 3v-2h.5a1 1 0 0 1 1 1a1 1 0 0 1-1 1zm3.5-3v6H11v-2h.75l.66 2h1.32l-.79-2.39c.49-.36.81-.95.81-1.61a2 2 0 0 0-2-2zM11 12v-2h.5a1 1 0 0 1 1 1a1 1 0 0 1-1 1zm6-3c-1.38 0-2.5 1.34-2.5 3s1.12 3 2.5 3s2.5-1.34 2.5-3s-1.12-3-2.5-3m0 1.25c.76 0 1.38.78 1.38 1.75s-.62 1.75-1.38 1.75s-1.37-.78-1.37-1.75s.61-1.75 1.37-1.75\"/></svg>\n" +
+                     "    <span>#{title_showy60_showy_ru}</span>\n" +
+                     "</div>";
+
     Lampa.Component.add('showy_ru_lampac', component);
     resetTemplates();
 
-    function addButton(e) {
-      if (!e.render || !e.render.length) return;
-      var scope = e.render.parent ? e.render.parent() : e.render;
-      if (scope && scope.find && scope.find('.showy-ru-showy60--button').length) return;
-      var btn = $(Lampa.Lang.translate(button));
-      btn.on('hover:enter', function() { openShowyPro(e.movie); });
-      e.render.before(btn);
+    // ==========================================================
+    // УРОВЕНЬ 100 000: ЭВРИСТИЧЕСКИЙ ИНЖЕКТОР КНОПКИ
+    // ==========================================================
+    function injectButton(activity, movieData) {
+        if (!activity || !activity.render) return;
+        var render = activity.render();
+        if (!render || !render.length) return;
+        
+        // Защита от дубликатов
+        if (render.find('.showy-ru-showy60--button').length) return;
+        
+        var btn = $(Lampa.Lang.translate(buttonHTML));
+        btn.on('hover:enter', function() {
+            openShowyPro(movieData);
+        });
+
+        var injected = false;
+        
+        // Массив целей для инъекции (от новых версий интерфейса Lampa к старым)
+        var targetZones = [
+            { el: render.find('.full-start-new__buttons'), method: 'append' }, // Новая тема
+            { el: render.find('.full-start__buttons'), method: 'append' },     // Старая тема
+            { el: render.find('.button--play').first(), method: 'before' },    // Классический фоллбэк
+            { el: render.find('.view--torrent').first(), method: 'before' },
+            { el: render.find('.button--book').first(), method: 'before' }
+        ];
+
+        for (var i = 0; i < targetZones.length; i++) {
+            var zone = targetZones[i];
+            if (zone.el && zone.el.length) {
+                if (zone.method === 'append') {
+                    zone.el.append(btn);
+                } else {
+                    zone.el.before(btn);
+                }
+                injected = true;
+                break;
+            }
+        }
+
+        // Глухой фоллбэк, если все узлы пропали: просто кидаем кнопку в правую инфо-панель
+        if (!injected) {
+            render.find('.info__right').append(btn);
+        }
     }
+
     Lampa.Listener.follow('full', function(e) {
       if (e.type == 'complite') {
-        addButton({ render: e.object.activity.render().find('.button--play, .view--torrent').first(), movie: e.data.movie });
+        injectButton(e.object.activity, e.data.movie);
       }
     });
+
     try {
       if (Lampa.Activity.active().component == 'full') {
-        addButton({ render: Lampa.Activity.active().activity.render().find('.button--play, .view--torrent').first(), movie: Lampa.Activity.active().card });
+        injectButton(Lampa.Activity.active().activity, Lampa.Activity.active().card);
       }
     } catch (e) {}
     

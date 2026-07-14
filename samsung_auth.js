@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ShowyPro VIP Token Injector (Singularity/God-Tier)
 // @namespace    showypro-token-injector-god
-// @version      1000.0.0
-// @description  Абсолютный перехват сетевого стека, иммунитет к детекту и нулевой след в памяти
+// @version      1000.1.0
+// @description  Абсолютный перехват сетевого стека с полным спуфингом сессии (Token + UID + Email)
 // @match        *://showypro.com/*
 // @run-at       document-start
 // @grant        none
@@ -12,57 +12,70 @@
     'use strict';
 
     // 1. СИГНАТУРА ПРИЗРАКА
-    // Используем Symbol.for, чтобы спрятать флаг инициализации в глобальном реестре символов,
-    // где его невозможно случайно перезаписать.
     const GHOST_SIG = Symbol.for('[[ShowyPro_Singularity_Matrix]]');
     if (window[GHOST_SIG]) return;
     window[GHOST_SIG] = true;
 
     // 2. КЭШИРОВАНИЕ НАТИВНЫХ ИНСТРУКЦИЙ (IMMUNITY VAULT)
-    // Сохраняем ссылки на оригинальные методы ДО того, как сайт сможет их переопределить.
-    const { apply, construct, defineProperty, getOwnPropertyDescriptor } = Reflect;
+    const { apply, construct, defineProperty } = Reflect;
     const { freeze, create, defineProperties } = Object;
     const OriginalXHR = window.XMLHttpRequest;
     const OriginalFetch = window.fetch;
     const OriginalURL = window.URL;
 
-    // 3. БРОНИРОВАННАЯ КОНФИГУРАЦИЯ (FROZEN STATE)
-    // Объект создается без прототипа (Object.create(null)), исключая атаки через Object.prototype
+    // 3. БРОНИРОВАННАЯ КОНФИГУРАЦИЯ С ПОЛНЫМ СЛЕПКОМ СЕССИИ (SESSION SPOOFING)
     const CONFIG = freeze(Object.assign(create(null), {
-        TOKEN: '22cf26b7-c0bf-448b-b9f8-0e072029ff2c',
         TARGET: 'showypro.com',
         LITE_PATH: '/lite/',
         LOG: true,
         PREFIX: '🌌 [S-Tier Core]'
     }));
 
-    // Изолированный логгер
-    const Log = freeze({
-        sync: (msg, ...args) => CONFIG.LOG && console.log(`%c${CONFIG.PREFIX}%c ${msg}`, 'color: #ff00ff; text-shadow: 0 0 5px #ff00ff; font-weight: bold;', 'color: inherit;', ...args)
+    // Вектор инъекции: эти параметры будут насильно встроены во все запросы /lite/
+    const VIP_PAYLOAD = freeze({
+        showy_token: '22cf26b7-c0bf-448b-b9f8-0e072029ff2c',
+        account_email: 'irinakrisa555@ya.ru',
+        cub_id: '967951967',
+        uid: 'xfp4fi4j'
     });
 
-    // 4. НЕВИДИМОЕ ХРАНИЛИЩЕ СОСТОЯНИЙ (WEAKMAPS)
-    // Данные существуют только пока существует сам объект XHR/Fetch. Сборщик мусора всё очистит сам.
+    const Log = freeze({
+        sync: (msg, ...args) => CONFIG.LOG && console.log(`%c${CONFIG.PREFIX}%c ${msg}`, 'color: #00ffcc; text-shadow: 0 0 5px #00ffcc; font-weight: bold;', 'color: inherit;', ...args)
+    });
+
     const XhrVault = new WeakMap();
 
-    // Виртуальные ответы API (без прототипа)
     const MOCK_API = freeze(Object.assign(create(null), {
         '/api/check_pro_auth': { status: true, vip: true, premium: true, is_vip: 1, expire: 4102444800 },
-        '/api/check_pro_code': { status: 'success', token: CONFIG.TOKEN },
+        '/api/check_pro_code': { status: 'success', token: VIP_PAYLOAD.showy_token },
         '/api/get_code': { code: '123456' }
     }));
 
-    // 5. УТИЛИТА ТРАНСМУТАЦИИ URL
+    // 4. УТИЛИТА ТРАНСМУТАЦИИ URL (ВЕКТОРНЫЙ ИНЖЕКТОР)
     const URLAlchemist = {
         inject(rawUrl) {
             if (typeof rawUrl !== 'string') return rawUrl;
             try {
+                // Используем нативный URL конструктор для безопасного парсинга
                 const urlObj = construct(OriginalURL, [rawUrl, window.location.origin]);
-                urlObj.searchParams.set('showy_token', CONFIG.TOKEN);
+                
+                // Встраиваем полный слепок сессии (перезапишет существующие или добавит новые)
+                for (const [key, value] of Object.entries(VIP_PAYLOAD)) {
+                    urlObj.searchParams.set(key, value);
+                }
+                
                 return urlObj.toString();
-            } catch {
-                return rawUrl.replace(/[?&]showy_token=[^&]*/g, '') + 
-                       (rawUrl.includes('?') ? '&' : '?') + 'showy_token=' + CONFIG.TOKEN;
+            } catch (err) {
+                // Резервный механизм на случай аномальных строк
+                let modifiedUrl = rawUrl;
+                for (const [key, value] of Object.entries(VIP_PAYLOAD)) {
+                    // Вырезаем старый ключ, если есть
+                    const regex = new RegExp(`[?&]${key}=[^&]*`, 'g');
+                    modifiedUrl = modifiedUrl.replace(regex, '');
+                    // Добавляем наш VIP-ключ
+                    modifiedUrl += (modifiedUrl.includes('?') ? '&' : '?') + `${key}=${encodeURIComponent(value)}`;
+                }
+                return modifiedUrl;
             }
         },
         shouldMutate(url) {
@@ -70,8 +83,7 @@
         }
     };
 
-    // 6. АБСОЛЮТНЫЙ ПЕРЕХВАТ СЕТИ (ES6 PROXIES)
-    // Proxy делает перехватчики неотличимыми от нативного кода браузера.
+    // 5. АБСОЛЮТНЫЙ ПЕРЕХВАТ СЕТИ (ES6 PROXIES)
     const NetworkMatrix = {
         init() {
             // --- ПЕРЕХВАТ FETCH ---
@@ -80,19 +92,17 @@
                     let [resource, options] = args;
                     let url = typeof resource === 'string' ? resource : (resource?.url || '');
 
-                    // Виртуализация API
                     const mockKey = Object.keys(MOCK_API).find(k => url.includes(k));
-                    if (mockMatch) {
+                    if (mockKey) {
                         Log.sync(`Эмуляция Fetch: ${mockKey}`);
                         return Promise.resolve(new Response(JSON.stringify(MOCK_API[mockKey]), {
                             status: 200, headers: { 'Content-Type': 'application/json' }
                         }));
                     }
 
-                    // Инъекция токена
                     if (URLAlchemist.shouldMutate(url) && url.includes(CONFIG.LITE_PATH)) {
                         const newUrl = URLAlchemist.inject(url);
-                        Log.sync(`Квантовый сдвиг URL (Fetch): ${newUrl}`);
+                        Log.sync(`Полный спуфинг сессии (Fetch): ${newUrl}`);
                         
                         if (typeof resource === 'string') args[0] = newUrl;
                         else if (resource instanceof Request) args[0] = new Request(newUrl, resource);
@@ -102,12 +112,11 @@
                 }
             });
 
-            // --- ПЕРЕХВАТ XHR (Конструктор и Прототип) ---
+            // --- ПЕРЕХВАТ XHR ---
             window.XMLHttpRequest = new Proxy(OriginalXHR, {
                 construct(target, args) {
                     const xhrInstance = construct(target, args);
                     
-                    // Перехватываем методы экземпляра через Proxy, сохраняя его идентичность
                     const openProxy = new Proxy(xhrInstance.open, {
                         apply(openTarget, thisArg, openArgs) {
                             let [method, url] = openArgs;
@@ -151,7 +160,6 @@
                         }
                     });
 
-                    // Переопределяем методы только для этого экземпляра
                     defineProperty(xhrInstance, 'open', { value: openProxy });
                     defineProperty(xhrInstance, 'send', { value: sendProxy });
 
@@ -161,14 +169,12 @@
         }
     };
 
-    // 7. ЭКЗЕКУТОР ИНТЕРФЕЙСА (ДВОЙНОЙ КОНТУР)
+    // 6. ЭКЗЕКУТОР ИНТЕРФЕЙСА (ДВОЙНОЙ КОНТУР)
     const UIExecutioner = {
         init() {
             this.hijackLampaAPI();
             this.activateShadowObserver();
         },
-
-        // Контур 1: Перехват API
         hijackLampaAPI() {
             let lampaRef = window.Lampa;
             const patchModal = (lampaObj) => {
@@ -179,7 +185,7 @@
                             const conf = args[0] || {};
                             const content = String(conf.html || '') + String(conf.title || '');
                             if (/(code|auth|login|premium|subscription)/i.test(content)) {
-                                Log.sync(`Превентивное уничтожение модального окна на уровне API`);
+                                Log.sync(`Превентивное уничтожение модального окна`);
                                 return { close: () => {}, toggle: () => {} };
                             }
                             return apply(target, thisArg, args);
@@ -187,7 +193,6 @@
                     });
                 }
             };
-
             defineProperty(window, 'Lampa', {
                 configurable: false,
                 get: () => lampaRef,
@@ -195,35 +200,29 @@
             });
             if (lampaRef) patchModal(lampaRef);
         },
-
-        // Контур 2: Эвристический рендеринг-перехватчик (До отрисовки кадра)
         activateShadowObserver() {
             const observer = new MutationObserver((mutations) => {
                 for (const mutation of mutations) {
                     for (const node of mutation.addedNodes) {
                         if (node.nodeType === 1 && node.classList) {
-                            // Если узел похож на модальное окно оплаты Lampa
                             const text = node.textContent?.toLowerCase() || '';
                             const isModal = node.className.includes('modal') || node.className.includes('layer');
                             if (isModal && /(премиум|premium|введите код|подписка|showypro)/i.test(text)) {
-                                node.remove(); // Уничтожение до paint-цикла
-                                Log.sync(`Теневой наблюдатель сжег DOM-узел: ${node.className}`);
+                                node.remove();
                             }
                         }
                     }
                 }
             });
-            
-            // Наблюдаем за всем документом с максимальной агрессией
             observer.observe(document.documentElement, { childList: true, subtree: true });
         }
     };
 
-    // 8. ЗАПУСК ЯДРА
+    // 7. ЗАПУСК ЯДРА
     try {
         NetworkMatrix.init();
         UIExecutioner.init();
-        Log.sync('Матрица переписана. Ожидание сигналов.');
+        Log.sync('Матрица переписана. Полный спуфинг сессии активирован.');
     } catch (e) {
         console.error(`${CONFIG.PREFIX} Фатальный сбой инъекции:`, e);
     }

@@ -1,9 +1,11 @@
 // ==UserScript==
-// @name         ShowyPro VIP Token Injector (Singularity/God-Tier)
-// @namespace    showypro-token-injector-god
-// @version      1000.1.1
-// @description  Абсолютный перехват сетевого стека с полным спуфингом сессии (Token + UID + Email)
+// @name         ShowyPro VIP Token Injector (Lampa Core Hijack)
+// @namespace    showypro-token-injector-core
+// @version      1000.2.0
+// @description  Глубокая инъекция в ядро Lampa. Абсолютный Premium-unlock без перехвата XHR и Observer'ов.
 // @match        *://showypro.com/*
+// @match        *://cub.watch/*
+// @match        *://lampa.mx/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
@@ -11,218 +13,141 @@
 (function() {
     'use strict';
 
-    // 1. СИГНАТУРА ПРИЗРАКА
-    const GHOST_SIG = Symbol.for('[[ShowyPro_Singularity_Matrix]]');
-    if (window[GHOST_SIG]) return;
-    window[GHOST_SIG] = true;
+    // Защита от дублирования инъекции
+    const CORE_SIG = Symbol.for('[[Lampa_Core_Matrix]]');
+    if (window[CORE_SIG]) return;
+    window[CORE_SIG] = true;
 
-    // 2. КЭШИРОВАНИЕ НАТИВНЫХ ИНСТРУКЦИЙ (IMMUNITY VAULT)
-    const { apply, construct, defineProperty } = Reflect;
-    const { freeze, create, defineProperties } = Object;
-    const OriginalXHR = window.XMLHttpRequest;
-    const OriginalFetch = window.fetch;
-    const OriginalURL = window.URL;
-
-    // 3. БРОНИРОВАННАЯ КОНФИГУРАЦИЯ С ПОЛНЫМ СЛЕПКОМ СЕССИИ
-    const CONFIG = freeze(Object.assign(create(null), {
-        TARGET: 'showypro.com',
-        LITE_PATH: '/lite/',
-        LOG: true,
-        PREFIX: '🌌 [S-Tier Core]'
-    }));
-
-    // Вектор инъекции: эти параметры будут насильно встроены во все запросы
-    const VIP_PAYLOAD = freeze({
+    // Полный слепок премиум-сессии для функции account() и requestParams()
+    const VIP_PAYLOAD = Object.freeze({
         showy_token: '22cf26b7-c0bf-448b-b9f8-0e072029ff2c',
         account_email: 'irinakrisa555@ya.ru',
-        cub_id: '967951967',
-        uid: 'xfp4fi4j'
+        lampac_unic_id: 'xfp4fi4j',
+        cub_id: '967951967'
     });
 
-    const Log = freeze({
-        sync: (msg, ...args) => CONFIG.LOG && console.log(`%c${CONFIG.PREFIX}%c ${msg}`, 'color: #00ffcc; text-shadow: 0 0 5px #00ffcc; font-weight: bold;', 'color: inherit;', ...args)
-    });
+    const Log = {
+        godMode: (msg) => console.log(`%c🧠 [Core Hijack]%c ${msg}`, 'color: #ff0055; text-shadow: 0 0 5px #ff0055; font-weight: bold;', 'color: inherit;')
+    };
 
-    const XhrVault = new WeakMap();
+    // ============================================================
+    // 1. ПОДМЕНА ЯДРА LAMPA (STORAGE & REQUEST)
+    // ============================================================
+    function pacifyLampaCore(Lampa) {
+        if (Lampa.__isHijacked) return;
+        Lampa.__isHijacked = true;
 
-    const MOCK_API = freeze(Object.assign(create(null), {
-        '/api/check_pro_auth': { status: true, vip: true, premium: true, is_vip: 1, expire: 4102444800 },
-        '/api/check_pro_code': { status: 'success', token: VIP_PAYLOAD.showy_token },
-        '/api/get_code': { code: '123456' }
-    }));
-
-    // 4. УТИЛИТА ТРАНСМУТАЦИИ URL
-    const URLAlchemist = {
-        inject(rawUrl) {
-            if (typeof rawUrl !== 'string') return rawUrl;
-            try {
-                const urlObj = construct(OriginalURL, [rawUrl, window.location.origin]);
-                for (const [key, value] of Object.entries(VIP_PAYLOAD)) {
-                    urlObj.searchParams.set(key, value);
-                }
-                return urlObj.toString();
-            } catch (err) {
-                let modifiedUrl = rawUrl;
-                for (const [key, value] of Object.entries(VIP_PAYLOAD)) {
-                    const regex = new RegExp(`[?&]${key}=[^&]*`, 'g');
-                    modifiedUrl = modifiedUrl.replace(regex, '');
-                    modifiedUrl += (modifiedUrl.includes('?') ? '&' : '?') + `${key}=${encodeURIComponent(value)}`;
-                }
-                return modifiedUrl;
+        // Шаг 1: Подмена памяти фреймворка
+        // Плагин вызывает Lampa.Storage.get() в функции account()
+        const origStorageGet = Lampa.Storage.get;
+        Lampa.Storage.get = function(name, def) {
+            // Если плагин просит ключи авторизации, отдаем наши VIP-данные
+            if (VIP_PAYLOAD[name]) {
+                return VIP_PAYLOAD[name];
             }
-        },
-        shouldMutate(url) {
-            return typeof url === 'string' && url.includes(CONFIG.TARGET);
-        }
-    };
+            return origStorageGet.call(this, name, def);
+        };
+        Log.godMode('Lampa.Storage успешно виртуализирован.');
 
-    // 5. АБСОЛЮТНЫЙ ПЕРЕХВАТ СЕТИ (ES6 PROXIES)
-    const NetworkMatrix = {
-        init() {
-            window.fetch = new Proxy(OriginalFetch, {
-                apply(target, thisArg, args) {
-                    let [resource, options] = args;
-                    let url = typeof resource === 'string' ? resource : (resource?.url || '');
+        // Шаг 2: Векторная инъекция параметров прямо в сетевой класс Lampa
+        // Плагин использует Lampa.Reguest для обращения к /lite/
+        if (Lampa.Reguest && Lampa.Reguest.prototype) {
+            ['native', 'silent'].forEach(method => {
+                const origMethod = Lampa.Reguest.prototype[method];
+                if (!origMethod) return;
 
-                    const mockKey = Object.keys(MOCK_API).find(k => url.includes(k));
-                    if (mockKey) {
-                        Log.sync(`Эмуляция Fetch: ${mockKey}`);
-                        return Promise.resolve(new Response(JSON.stringify(MOCK_API[mockKey]), {
-                            status: 200, headers: { 'Content-Type': 'application/json' }
-                        }));
-                    }
-
-                    if (URLAlchemist.shouldMutate(url) && url.includes(CONFIG.LITE_PATH)) {
-                        const newUrl = URLAlchemist.inject(url);
-                        Log.sync(`Полный спуфинг сессии (Fetch): ${newUrl}`);
-                        
-                        if (typeof resource === 'string') args[0] = newUrl;
-                        else if (resource instanceof Request) args[0] = new Request(newUrl, resource);
-                        else args[0] = { ...resource, url: newUrl };
-                    }
-                    return apply(target, thisArg, args);
-                }
-            });
-
-            window.XMLHttpRequest = new Proxy(OriginalXHR, {
-                construct(target, args) {
-                    const xhrInstance = construct(target, args);
-                    
-                    const openProxy = new Proxy(xhrInstance.open, {
-                        apply(openTarget, thisArg, openArgs) {
-                            let [method, url] = openArgs;
-                            XhrVault.set(thisArg, { originalUrl: url });
-
-                            if (URLAlchemist.shouldMutate(url) && url.includes(CONFIG.LITE_PATH)) {
-                                openArgs[1] = URLAlchemist.inject(url);
-                            }
-                            return apply(openTarget, thisArg, openArgs);
-                        }
-                    });
-
-                    const sendProxy = new Proxy(xhrInstance.send, {
-                        apply(sendTarget, thisArg, sendArgs) {
-                            const state = XhrVault.get(thisArg);
-                            const url = state?.originalUrl || '';
-                            const mockKey = Object.keys(MOCK_API).find(k => url.includes(k));
-
-                            if (mockKey) {
-                                Log.sync(`Глубокая виртуализация XHR: ${mockKey}`);
-                                const mockData = MOCK_API[mockKey];
-                                const jsonStr = JSON.stringify(mockData);
-
-                                defineProperties(thisArg, {
-                                    readyState: { value: 4 },
-                                    status: { value: 200 },
-                                    statusText: { value: 'OK' },
-                                    responseText: { value: jsonStr },
-                                    response: { get: () => thisArg.responseType === 'json' ? mockData : jsonStr }
-                                });
-
-                                queueMicrotask(() => {
-                                    ['readystatechange', 'load', 'loadend'].forEach(e => {
-                                        if (typeof thisArg[`on${e}`] === 'function') thisArg[`on${e}`]();
-                                        thisArg.dispatchEvent(new Event(e));
-                                    });
-                                });
-                                return;
-                            }
-                            return apply(sendTarget, thisArg, sendArgs);
-                        }
-                    });
-
-                    defineProperty(xhrInstance, 'open', { value: openProxy });
-                    defineProperty(xhrInstance, 'send', { value: sendProxy });
-
-                    return xhrInstance;
-                }
-            });
-        }
-    };
-
-    // 6. ЭКЗЕКУТОР ИНТЕРФЕЙСА (ДВОЙНОЙ КОНТУР)
-    const UIExecutioner = {
-        init() {
-            this.hijackLampaAPI();
-            this.activateShadowObserver();
-        },
-        hijackLampaAPI() {
-            let lampaRef = window.Lampa;
-            const patchModal = (lampaObj) => {
-                if (lampaObj?.Modal && !lampaObj.Modal[GHOST_SIG]) {
-                    lampaObj.Modal[GHOST_SIG] = true;
-                    lampaObj.Modal.open = new Proxy(lampaObj.Modal.open, {
-                        apply(target, thisArg, args) {
-                            const conf = args[0] || {};
-                            const content = String(conf.html || '') + String(conf.title || '');
-                            if (/(code|auth|login|premium|subscription)/i.test(content)) {
-                                Log.sync(`Превентивное уничтожение модального окна на уровне API`);
-                                return { close: () => {}, toggle: () => {} };
-                            }
-                            return apply(target, thisArg, args);
-                        }
-                    });
-                }
-            };
-            try {
-                defineProperty(window, 'Lampa', {
-                    configurable: false,
-                    get: () => lampaRef,
-                    set: (val) => { lampaRef = val; patchModal(val); }
-                });
-            } catch (e) {} // Игнорируем, если свойство уже заморожено
-            if (lampaRef) patchModal(lampaRef);
-        },
-        activateShadowObserver() {
-            const observer = new MutationObserver((mutations) => {
-                for (const mutation of mutations) {
-                    for (const node of mutation.addedNodes) {
-                        // Проверяем, что это элемент (nodeType === 1) и используем безопасный getAttribute
-                        if (node.nodeType === 1 && typeof node.getAttribute === 'function') {
-                            const className = node.getAttribute('class') || '';
-                            const isModal = className.includes('modal') || className.includes('layer');
-                            
-                            if (isModal) {
-                                const text = node.textContent?.toLowerCase() || '';
-                                if (/(премиум|premium|введите код|подписка|showypro)/i.test(text)) {
-                                    node.remove();
-                                    Log.sync(`Теневой наблюдатель сжег DOM-узел`);
-                                }
-                            }
+                Lampa.Reguest.prototype[method] = function(url, ...args) {
+                    if (typeof url === 'string' && url.includes('/lite/')) {
+                        try {
+                            const urlObj = new URL(url, window.location.origin);
+                            // Форсированно встраиваем cub_id и другие параметры, перекрывая сгенерированные
+                            urlObj.searchParams.set('cub_id', VIP_PAYLOAD.cub_id);
+                            urlObj.searchParams.set('account_email', VIP_PAYLOAD.account_email);
+                            urlObj.searchParams.set('uid', VIP_PAYLOAD.lampac_unic_id);
+                            urlObj.searchParams.set('showy_token', VIP_PAYLOAD.showy_token);
+                            url = urlObj.toString();
+                        } catch (e) {
+                            // Игнорируем ошибки парсинга, Lampa.Utils.addUrlComponent отработает внутри самого плагина
                         }
                     }
-                }
+                    return origMethod.call(this, url, ...args);
+                };
             });
-            observer.observe(document.documentElement, { childList: true, subtree: true });
+            Log.godMode('Lampa.Reguest (Сетевой стек) взят под контроль.');
         }
-    };
-
-    // 7. ЗАПУСК ЯДРА
-    try {
-        NetworkMatrix.init();
-        UIExecutioner.init();
-        Log.sync('Матрица переписана. Ошибка SVGAnimatedString устранена.');
-    } catch (e) {
-        console.error(`${CONFIG.PREFIX} Фатальный сбой инъекции:`, e);
     }
+
+    // ============================================================
+    // 2. НЕЙТРАЛИЗАЦИЯ ПРОВЕРОК АВТОРИЗАЦИИ JQUERY
+    // ============================================================
+    // Плагин осуществляет валидацию VIP-статуса через вызовы $.ajax
+    function pacifyJQuery($) {
+        if (!$) return;
+        if ($.__isHijacked) return;
+        $.__isHijacked = true;
+
+        const origAjax = $.ajax;
+        $.ajax = function(config) {
+            const url = config.url || '';
+
+            // Эмулируем успешный ответ для проверки auth
+            if (url.includes('/api/check_pro_auth/')) {
+                Log.godMode('Блокировка ajax: check_pro_auth (Возврат Premium статуса)');
+                setTimeout(() => {
+                    if (typeof config.success === 'function') {
+                        config.success({ status: true, vip: true, premium: true, is_vip: 1, expire: 4102444800 });
+                    }
+                }, 0);
+                return { abort: () => {} };
+            }
+
+            // Эмулируем успешный ответ для проверки подписки
+            if (url.includes('/api/check_subscription/')) {
+                Log.godMode('Блокировка ajax: check_subscription');
+                setTimeout(() => {
+                    if (typeof config.success === 'function') {
+                        config.success({ status: 'success' });
+                    }
+                }, 0);
+                return { abort: () => {} };
+            }
+
+            // Пропускаем все остальные легитимные ajax-запросы
+            return origAjax.apply(this, arguments);
+        };
+        Log.godMode('Протоколы валидации jQuery ($) нейтрализованы.');
+    }
+
+    // ============================================================
+    // 3. ПЕРЕХВАТ ИНИЦИАЛИЗАЦИИ
+    // ============================================================
+    // Поскольку мы не знаем точного момента загрузки Lampa и jQuery, мы
+    // перехватываем их создание в глобальном пространстве имен.
+    let cachedLampa = window.Lampa;
+    let cachedJQuery = window.$ || window.jQuery;
+
+    if (cachedLampa) pacifyLampaCore(cachedLampa);
+    if (cachedJQuery) pacifyJQuery(cachedJQuery);
+
+    Object.defineProperty(window, 'Lampa', {
+        configurable: true,
+        enumerable: true,
+        get: () => cachedLampa,
+        set: (val) => {
+            cachedLampa = val;
+            if (val) pacifyLampaCore(val);
+        }
+    });
+
+    Object.defineProperty(window, '$', {
+        configurable: true,
+        enumerable: true,
+        get: () => cachedJQuery,
+        set: (val) => {
+            cachedJQuery = val;
+            if (val) pacifyJQuery(val);
+        }
+    });
+
+    Log.godMode('Матрица Lampa Core Hijack установлена. Ожидание загрузки плагинов...');
 })();

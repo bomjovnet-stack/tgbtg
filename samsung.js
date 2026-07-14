@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Lampa: YouTube Premium Edition (Tizen Ultimate)
 // @namespace    lampa-youtube-premium-tizen-ultimate
-// @version      1000.4.0
-// @description  Объединенный скрипт: Полный обход Premium + Жесткий фикс UI для Tizen OS (Серый текст, сброс года)
+// @version      1000.5.0
+// @description  CUB ID Sync, Полный обход Premium, Жесткий фикс UI для Tizen OS
 // @match        *://*/*
 // @run-at       document-start
 // @grant        none
@@ -37,15 +37,33 @@
         ]
     };
 
+    // Инъекция реальных данных CUB для стабильной синхронизации
     function getFakePremium() {
+        var userEmail = 'irinakrisa555@ya.ru';
+        var userCubId = '967951967';
+        var userUid = 'xfp4fi4j';
+
         return {
             premium: true, pro: true, vip: true, gold: true, active: true,
             end: '2099-12-31', verification_hash: 'yt_premium_bypass_' + new Date().getTime(),
+            account_email: userEmail,
+            cub_id: userCubId,
+            uid: userUid,
             account: { 
                 premium: true, 
-                profile: { id: 777, age: 99, child: false },
+                account_email: userEmail,
+                cub_id: userCubId,
+                uid: userUid,
+                profile: { 
+                    id: parseInt(userCubId, 10), 
+                    age: 99, 
+                    child: false,
+                    account_email: userEmail,
+                    cub_id: userCubId,
+                    uid: userUid
+                },
                 token: 'premium_token_' + Math.random().toString(36).substring(2), 
-                username: 'Premium_User' 
+                username: 'irinakrisa555' 
             },
             status: 200
         };
@@ -69,12 +87,11 @@
         style.id = styleId;
         style.type = 'text/css';
         
-        // Префикс 'html body' дает максимальный приоритет, перекрывая динамические стили Lampa
         var cssText = 
             /* === БЛОКИРОВКА РЕКЛАМЫ В ИНТЕРФЕЙСЕ === */
             CONFIG.AD_SELECTORS.join(', ') + ' { display: none !important; opacity: 0 !important; visibility: hidden !important; width: 0 !important; height: 0 !important; } ' +
             
-            /* === БАЗОВЫЙ ФОН (Оптимизация для OLED панелей) === */
+            /* === БАЗОВЫЙ ФОН (OLED BLACK) === */
             'html body { background-color: #0f0f0f !important; } ' +
             'html body .wrap, html body .scroll__content, html body .layer--width { background: transparent !important; } ' +
             'html body .background { opacity: 0.4 !important; filter: blur(15px) !important; mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 90%); -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 90%); } ' +
@@ -90,7 +107,6 @@
             'html body .menu__item.focus .menu__ico svg, html body .menu__item.focus .menu__ico use { fill: #0f0f0f !important; } ' +
             
             /* === ИСПРАВЛЕНИЕ ГОДА НА ГЛАВНОЙ (card__age) === */
-            /* Полный сброс рамки, фона и ширины для обхода бага WebKit */
             'html body .card__age, html body .card__age::before, html body .card__age::after { ' +
                 'display: block !important; position: static !important; background: transparent !important; background-color: transparent !important; background-image: none !important; ' +
                 'color: #aaaaaa !important; font-size: 0.9em !important; font-weight: 400 !important; padding: 0 !important; margin: 4px 0 0 0 !important; ' +
@@ -128,7 +144,6 @@
         (document.documentElement || document.head).appendChild(style);
     }
 
-    // Защита от динамического удаления стилей ядром Lampa
     function observeDOM() {
         if (!window.MutationObserver) return;
         var observer = new MutationObserver(function() {
@@ -164,7 +179,6 @@
                 try {
                     var url = this._interceptUrl;
                     if (url) {
-                        // Блокировка рекламы на сетевом уровне
                         if (checkMatch(url, CONFIG.AD_DOMAINS)) {
                             var selfBlock = this;
                             setTimeout(function() {
@@ -176,7 +190,6 @@
                             }, 0);
                             return;
                         }
-                        // Подмена статуса Premium аккаунта
                         if (checkMatch(url, CONFIG.PREMIUM_ENDPOINTS)) {
                             var selfPremium = this;
                             setTimeout(function() {
@@ -250,7 +263,6 @@
         configurable: true
     });
 
-    // Мгновенный сброс ожиданий рекламных вставок (vast.js)
     var origAppend = Element.prototype.appendChild;
     Element.prototype.appendChild = function(el) {
         try {
@@ -289,7 +301,6 @@
         window.lampa_settings.account_use = true;
         window.lampa_settings.fix_widget = true;
         
-        // Отключение нативных тяжелых эффектов Lampa для плавности Tizen
         window.lampa_settings.glass_style = false; 
         window.lampa_settings.mask = false;
         window.lampa_settings.advanced_animation = false;
@@ -304,7 +315,6 @@
         observeDOM();
         enforceCoreSettings();
         
-        // Надежный цикл поддержания настроек и стилей
         setInterval(function() {
             injectTizenDesign();
             enforceCoreSettings();
@@ -314,6 +324,6 @@
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot); } 
     else { boot(); }
 
-    log('✅ YouTube Premium Edition (Tizen Ultimate v1000.4.0) успешно загружен.');
+    log('✅ YouTube Premium Edition (CUB Sync v1000.5.0) загружен.');
 
 })();

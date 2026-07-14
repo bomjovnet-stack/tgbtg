@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ShowyPro VIP Token Injector (Singularity/God-Tier)
 // @namespace    showypro-token-injector-god
-// @version      1000.1.0
+// @version      1000.1.1
 // @description  Абсолютный перехват сетевого стека с полным спуфингом сессии (Token + UID + Email)
 // @match        *://showypro.com/*
 // @run-at       document-start
@@ -23,7 +23,7 @@
     const OriginalFetch = window.fetch;
     const OriginalURL = window.URL;
 
-    // 3. БРОНИРОВАННАЯ КОНФИГУРАЦИЯ С ПОЛНЫМ СЛЕПКОМ СЕССИИ (SESSION SPOOFING)
+    // 3. БРОНИРОВАННАЯ КОНФИГУРАЦИЯ С ПОЛНЫМ СЛЕПКОМ СЕССИИ
     const CONFIG = freeze(Object.assign(create(null), {
         TARGET: 'showypro.com',
         LITE_PATH: '/lite/',
@@ -31,7 +31,7 @@
         PREFIX: '🌌 [S-Tier Core]'
     }));
 
-    // Вектор инъекции: эти параметры будут насильно встроены во все запросы /lite/
+    // Вектор инъекции: эти параметры будут насильно встроены во все запросы
     const VIP_PAYLOAD = freeze({
         showy_token: '22cf26b7-c0bf-448b-b9f8-0e072029ff2c',
         account_email: 'irinakrisa555@ya.ru',
@@ -51,28 +51,21 @@
         '/api/get_code': { code: '123456' }
     }));
 
-    // 4. УТИЛИТА ТРАНСМУТАЦИИ URL (ВЕКТОРНЫЙ ИНЖЕКТОР)
+    // 4. УТИЛИТА ТРАНСМУТАЦИИ URL
     const URLAlchemist = {
         inject(rawUrl) {
             if (typeof rawUrl !== 'string') return rawUrl;
             try {
-                // Используем нативный URL конструктор для безопасного парсинга
                 const urlObj = construct(OriginalURL, [rawUrl, window.location.origin]);
-                
-                // Встраиваем полный слепок сессии (перезапишет существующие или добавит новые)
                 for (const [key, value] of Object.entries(VIP_PAYLOAD)) {
                     urlObj.searchParams.set(key, value);
                 }
-                
                 return urlObj.toString();
             } catch (err) {
-                // Резервный механизм на случай аномальных строк
                 let modifiedUrl = rawUrl;
                 for (const [key, value] of Object.entries(VIP_PAYLOAD)) {
-                    // Вырезаем старый ключ, если есть
                     const regex = new RegExp(`[?&]${key}=[^&]*`, 'g');
                     modifiedUrl = modifiedUrl.replace(regex, '');
-                    // Добавляем наш VIP-ключ
                     modifiedUrl += (modifiedUrl.includes('?') ? '&' : '?') + `${key}=${encodeURIComponent(value)}`;
                 }
                 return modifiedUrl;
@@ -86,7 +79,6 @@
     // 5. АБСОЛЮТНЫЙ ПЕРЕХВАТ СЕТИ (ES6 PROXIES)
     const NetworkMatrix = {
         init() {
-            // --- ПЕРЕХВАТ FETCH ---
             window.fetch = new Proxy(OriginalFetch, {
                 apply(target, thisArg, args) {
                     let [resource, options] = args;
@@ -112,7 +104,6 @@
                 }
             });
 
-            // --- ПЕРЕХВАТ XHR ---
             window.XMLHttpRequest = new Proxy(OriginalXHR, {
                 construct(target, args) {
                     const xhrInstance = construct(target, args);
@@ -185,7 +176,7 @@
                             const conf = args[0] || {};
                             const content = String(conf.html || '') + String(conf.title || '');
                             if (/(code|auth|login|premium|subscription)/i.test(content)) {
-                                Log.sync(`Превентивное уничтожение модального окна`);
+                                Log.sync(`Превентивное уничтожение модального окна на уровне API`);
                                 return { close: () => {}, toggle: () => {} };
                             }
                             return apply(target, thisArg, args);
@@ -193,22 +184,30 @@
                     });
                 }
             };
-            defineProperty(window, 'Lampa', {
-                configurable: false,
-                get: () => lampaRef,
-                set: (val) => { lampaRef = val; patchModal(val); }
-            });
+            try {
+                defineProperty(window, 'Lampa', {
+                    configurable: false,
+                    get: () => lampaRef,
+                    set: (val) => { lampaRef = val; patchModal(val); }
+                });
+            } catch (e) {} // Игнорируем, если свойство уже заморожено
             if (lampaRef) patchModal(lampaRef);
         },
         activateShadowObserver() {
             const observer = new MutationObserver((mutations) => {
                 for (const mutation of mutations) {
                     for (const node of mutation.addedNodes) {
-                        if (node.nodeType === 1 && node.classList) {
-                            const text = node.textContent?.toLowerCase() || '';
-                            const isModal = node.className.includes('modal') || node.className.includes('layer');
-                            if (isModal && /(премиум|premium|введите код|подписка|showypro)/i.test(text)) {
-                                node.remove();
+                        // Проверяем, что это элемент (nodeType === 1) и используем безопасный getAttribute
+                        if (node.nodeType === 1 && typeof node.getAttribute === 'function') {
+                            const className = node.getAttribute('class') || '';
+                            const isModal = className.includes('modal') || className.includes('layer');
+                            
+                            if (isModal) {
+                                const text = node.textContent?.toLowerCase() || '';
+                                if (/(премиум|premium|введите код|подписка|showypro)/i.test(text)) {
+                                    node.remove();
+                                    Log.sync(`Теневой наблюдатель сжег DOM-узел`);
+                                }
                             }
                         }
                     }
@@ -222,7 +221,7 @@
     try {
         NetworkMatrix.init();
         UIExecutioner.init();
-        Log.sync('Матрица переписана. Полный спуфинг сессии активирован.');
+        Log.sync('Матрица переписана. Ошибка SVGAnimatedString устранена.');
     } catch (e) {
         console.error(`${CONFIG.PREFIX} Фатальный сбой инъекции:`, e);
     }

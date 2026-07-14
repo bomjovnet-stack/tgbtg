@@ -98,12 +98,12 @@
             
             /* === ИСПРАВЛЕНИЕ МЕНЮ: НЕАКТИВНОЕ (Серый текст) === */
             'html body .menu__item { background: transparent !important; border-radius: 8px !important; margin: 4px 10px !important; width: calc(100% - 20px) !important; transition: none !important; } ' +
-            'html body .menu__item .menu__text { color: #aaaaaa !important; opacity: 1 !important; font-weight: 500 !important; } ' +
+            'html body .menu__item .menu__text { color: #000 !important; opacity: 1 !important; font-weight: 500 !important; } ' +
             'html body .menu__item .menu__ico svg, html body .menu__item .menu__ico use { fill: #aaaaaa !important; opacity: 1 !important; } ' +
             
             /* === ИСПРАВЛЕНИЕ МЕНЮ: ФОКУС (Белый фон, строго черный текст) === */
             'html body .menu__item.focus { background-color: #f1f1f1 !important; background-image: none !important; transform: scale(1.04) !important; box-shadow: 0 8px 20px rgba(255,255,255,0.15) !important; z-index: 99; border: none !important; } ' +
-            'html body .menu__item.focus .menu__text { color: #0f0f0f !important; text-shadow: none !important; font-weight: 600 !important; } ' +
+            'html body .menu__item.focus .menu__text { color: #000 !important; text-shadow: none !important; font-weight: 600 !important; } ' +
             'html body .menu__item.focus .menu__ico svg, html body .menu__item.focus .menu__ico use { fill: #0f0f0f !important; } ' +
             
             /* === ИСПРАВЛЕНИЕ ГОДА НА ГЛАВНОЙ (card__age) === */

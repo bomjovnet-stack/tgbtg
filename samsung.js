@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Lampa: YouTube Premium Edition (Tizen Ultimate)
 // @namespace    lampa-youtube-premium-tizen-ultimate
-// @version      1000.5.0
-// @description  CUB ID Sync, Полный обход Premium, Жесткий фикс UI для Tizen OS
+// @version      1000.6.0
+// @description  CUB ID Sync, Фикс UI Tizen, Скрытие кнопки Play, Фильтр контента
 // @match        *://*/*
 // @run-at       document-start
 // @grant        none
@@ -88,8 +88,9 @@
         style.type = 'text/css';
         
         var cssText = 
-            /* === БЛОКИРОВКА РЕКЛАМЫ В ИНТЕРФЕЙСЕ === */
+            /* === БЛОКИРОВКА РЕКЛАМЫ И СКРЫТИЕ КНОПКИ PLAY === */
             CONFIG.AD_SELECTORS.join(', ') + ' { display: none !important; opacity: 0 !important; visibility: hidden !important; width: 0 !important; height: 0 !important; } ' +
+            'html body .full-start__button.button--play { display: none !important; opacity: 0 !important; visibility: hidden !important; width: 0 !important; height: 0 !important; padding: 0 !important; margin: 0 !important; position: absolute !important; pointer-events: none !important; } ' +
             
             /* === БАЗОВЫЙ ФОН (OLED BLACK) === */
             'html body { background-color: #0f0f0f !important; } ' +
@@ -98,12 +99,12 @@
             
             /* === ИСПРАВЛЕНИЕ МЕНЮ: НЕАКТИВНОЕ (Серый текст) === */
             'html body .menu__item { background: transparent !important; border-radius: 8px !important; margin: 4px 10px !important; width: calc(100% - 20px) !important; transition: none !important; } ' +
-            'html body .menu__item .menu__text { color: #fff !important; opacity: 1 !important; font-weight: 500 !important; } ' +
+            'html body .menu__item .menu__text { color: #aaaaaa !important; opacity: 1 !important; font-weight: 500 !important; } ' +
             'html body .menu__item .menu__ico svg, html body .menu__item .menu__ico use { fill: #aaaaaa !important; opacity: 1 !important; } ' +
             
             /* === ИСПРАВЛЕНИЕ МЕНЮ: ФОКУС (Белый фон, строго черный текст) === */
             'html body .menu__item.focus { background-color: #f1f1f1 !important; background-image: none !important; transform: scale(1.04) !important; box-shadow: 0 8px 20px rgba(255,255,255,0.15) !important; z-index: 99; border: none !important; } ' +
-            'html body .menu__item.focus .menu__text { color: #000 !important; text-shadow: none !important; font-weight: 600 !important; } ' +
+            'html body .menu__item.focus .menu__text { color: #0f0f0f !important; text-shadow: none !important; font-weight: 600 !important; } ' +
             'html body .menu__item.focus .menu__ico svg, html body .menu__item.focus .menu__ico use { fill: #0f0f0f !important; } ' +
             
             /* === ИСПРАВЛЕНИЕ ГОДА НА ГЛАВНОЙ (card__age) === */
@@ -294,6 +295,8 @@
 
     function enforceCoreSettings() {
         if (!window.lampa_settings) window.lampa_settings = {};
+        
+        // Премиум флаги
         window.lampa_settings.premium = true;
         window.lampa_settings.pro = true;
         window.lampa_settings.vip = true;
@@ -301,10 +304,15 @@
         window.lampa_settings.account_use = true;
         window.lampa_settings.fix_widget = true;
         
+        // Отключение нативных тяжелых эффектов Lampa
         window.lampa_settings.glass_style = false; 
         window.lampa_settings.mask = false;
         window.lampa_settings.advanced_animation = false;
         window.lampa_settings.light_version = true;
+        
+        // Фильтрация контента
+        if (!window.lampa_settings.disable_features) window.lampa_settings.disable_features = {};
+        window.lampa_settings.disable_features.lgbt = true;
     }
 
     // ============================================================
@@ -324,6 +332,6 @@
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot); } 
     else { boot(); }
 
-    log('✅ YouTube Premium Edition (CUB Sync v1000.5.0) загружен.');
+    log('✅ YouTube Premium Edition (CUB Sync + Tweaks v1000.6.0) загружен.');
 
 })();

@@ -98,7 +98,7 @@
             
             /* === ИСПРАВЛЕНИЕ МЕНЮ: НЕАКТИВНОЕ (Серый текст) === */
             'html body .menu__item { background: transparent !important; border-radius: 8px !important; margin: 4px 10px !important; width: calc(100% - 20px) !important; transition: none !important; } ' +
-            'html body .menu__item .menu__text { color: #000 !important; opacity: 1 !important; font-weight: 500 !important; } ' +
+            'html body .menu__item .menu__text { color: #fff !important; opacity: 1 !important; font-weight: 500 !important; } ' +
             'html body .menu__item .menu__ico svg, html body .menu__item .menu__ico use { fill: #aaaaaa !important; opacity: 1 !important; } ' +
             
             /* === ИСПРАВЛЕНИЕ МЕНЮ: ФОКУС (Белый фон, строго черный текст) === */

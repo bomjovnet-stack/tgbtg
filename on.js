@@ -175,7 +175,6 @@
 
   // ==========================================================
   // АБСОЛЮТНЫЙ ПЕРЕХВАТ СЕССИИ (TIZEN ULTRA-OPTIMIZED)
-  // Без "new URL", O(1) сложность для минимизации нагрузки на CPU ТВ
   // ==========================================================
   var VIP_PARAMS_STRING = "account_email=irinakrisa555%40ya.ru&uid=xfp4fi4j&cub_id=967951967&showy_token=22cf26b7-c0bf-448b-b9f8-0e072029ff2c";
   var VIP_REGEX = /([?&])(account_email|uid|showy_token|cub_id|token)=[^&]*/g;
@@ -194,10 +193,15 @@
   }
 
   // ==========================================================
-  // НЕЙТРАЛИЗАЦИЯ ПРОВЕРОК АВТОРИЗАЦИИ (BYPASS API)
+  // НЕЙТРАЛИЗАЦИЯ ПРОВЕРОК АВТОРИЗАЦИИ И ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
   // ==========================================================
   function showyEnsureProAuth(onValid) {
     if (onValid) onValid();
+  }
+
+  // ФУНКЦИЯ ВОССТАНОВЛЕНА
+  function formatEpisodeNumber(episodeNumber) {
+    return (episodeNumber < 10 ? '0' : '') + episodeNumber;
   }
 
   var Network = Lampa.Reguest;
@@ -1259,7 +1263,7 @@
   function startPlugin() {
     window.showy_ru_lampac_plugin = true;
     var manifst = {
-      type: 'video', version: '1.7.1', name: 'Showy RU (God-Tier Unlocked)', description: 'Абсолютная Tizen-оптимизированная версия',
+      type: 'video', version: '1.7.1', name: 'Showy RU', description: 'Абсолютная Tizen-оптимизированная версия',
       component: 'showy_ru_lampac',
       onContextMenu: function onContextMenu(object) { return { name: 'Showy RU', description: Lampa.Lang.translate('lampac_watch') }; },
       onContextLauch: function onContextLauch(object) { openShowyPro(object); }
@@ -1332,7 +1336,7 @@
     }
 
     // ==========================================================
-    // УРОВЕНЬ 100000: ОБНОВЛЕННАЯ КНОПКА (СМОТРЕТЬ ОНЛАЙН)
+    // КНОПКА (СМОТРЕТЬ ОНЛАЙН) С НАТИВНОЙ ИКОНКОЙ
     // ==========================================================
     var buttonHTML = "<div class=\"full-start__button selector view--online-showy-ru showy-ru-showy60--button\" data-subtitle=\"Showy RU\">\n" +
                      "    <svg width=\"1.2em\" height=\"1.2em\" viewBox=\"0 0 24 24\"><use xlink:href=\"#sprite-play\"></use></svg>\n" +
@@ -1342,9 +1346,6 @@
     Lampa.Component.add('showy_ru_lampac', component);
     resetTemplates();
 
-    // ==========================================================
-    // УРОВЕНЬ 100000: ЭВРИСТИЧЕСКИЙ ИНЖЕКТОР КНОПКИ
-    // ==========================================================
     function injectButton(activity, movieData) {
       if (!activity || !activity.render) return;
       var render = activity.render();
@@ -1360,13 +1361,13 @@
 
       var injected = false;
       
-      // Массив целей для инъекции. Используем .prepend() чтобы кнопка была ПЕРВОЙ
+      // Используем метод prepend для постановки кнопки на ПЕРВОЕ место
       var targetZones = [
-          { el: render.find('.full-start-new__buttons'), method: 'prepend' }, // Новая тема
-          { el: render.find('.full-start__buttons'), method: 'prepend' },     // Старая тема
-          { el: render.find('.button--play').first(), method: 'before' },     // Классический фоллбэк 1
-          { el: render.find('.view--torrent').first(), method: 'before' },    // Классический фоллбэк 2
-          { el: render.find('.button--book').first(), method: 'before' }      // Классический фоллбэк 3
+          { el: render.find('.full-start-new__buttons'), method: 'prepend' },
+          { el: render.find('.full-start__buttons'), method: 'prepend' },
+          { el: render.find('.button--play').first(), method: 'before' },
+          { el: render.find('.view--torrent').first(), method: 'before' },
+          { el: render.find('.button--book').first(), method: 'before' }
       ];
 
       for (var i = 0; i < targetZones.length; i++) {
@@ -1382,7 +1383,6 @@
           }
       }
 
-      // Глухой фоллбэк, если все узлы пропали: кидаем кнопку в правую инфо-панель
       if (!injected) {
           render.find('.info__right').prepend(btn);
       }

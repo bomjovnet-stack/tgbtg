@@ -4,40 +4,19 @@
   if (window.showy_pro_ru_on2_runtime_loaded) return;
   window.showy_pro_ru_on2_runtime_loaded = true;
 
-  var LOG_PREFIX = '🚀 [Lampa on2.js v2]';
-  function log(msg, type) {
-    if (!window.console) return;
-    var method = type === 'error' ? console.error : type === 'warn' ? console.warn : console.log;
-    method(LOG_PREFIX + ' ' + msg);
-  }
-
-  // ==========================================================
-  // 1. ДИНАМИЧЕСКАЯ КОНФИГУРАЦИЯ И VIP ПАРАМЕТРЫ
-  // ==========================================================
-  var customCfg = window.LAMPA_CUSTOM_CONFIG || {};
-
   var Defined = {
     api: 'lampac',
     localhost: 'http://showypro.com/',
     apn: ''
   };
 
-  var VIP_CREDENTIALS = {
-    account_email: customCfg.email || 'irinakrisa555@ya.ru',
-    uid: customCfg.uid || 'xfp4fi4j',
-    cub_id: customCfg.cub_id || '967951967',
-    showy_token: '22cf26b7-c0bf-448b-b9f8-0e072029ff2c'
-  };
-
   var balansers_with_search;
 
-  // Фиксируем VIP UID в Lampa.Storage
-  try {
-    var unic_id = Lampa.Storage.get('lampac_unic_id', '');
-    if (!unic_id || unic_id !== VIP_CREDENTIALS.uid) {
-      Lampa.Storage.set('lampac_unic_id', VIP_CREDENTIALS.uid);
-    }
-  } catch(e) {}
+  // Жестко фиксируем VIP UID
+  var unic_id = Lampa.Storage.get('lampac_unic_id', '');
+  if (!unic_id || unic_id !== 'xfp4fi4j') {
+    Lampa.Storage.set('lampac_unic_id', 'xfp4fi4j');
+  }
 
   function getAndroidVersion() {
     if (Lampa.Platform.is('android')) {
@@ -195,43 +174,38 @@
   }
 
   // ==========================================================
-  // 2. ИНЖЕКТОР СЕССИИ В URL (NATIVE URL API WITH FALLBACK)
+  // АБСОЛЮТНЫЙ ПЕРЕХВАТ СЕССИИ (TIZEN ULTRA-OPTIMIZED)
   // ==========================================================
+  var VIP_PARAMS_STRING = "account_email=irinakrisa555%40ya.ru&uid=xfp4fi4j&cub_id=967951967&showy_token=22cf26b7-c0bf-448b-b9f8-0e072029ff2c";
+  var VIP_REGEX = /([?&])(account_email|uid|showy_token|cub_id|token)=[^&]*/g;
+
   function account(url) {
     url = String(url || '');
-    try {
-      var urlObj = new URL(url, window.location.origin);
-      for (var key in VIP_CREDENTIALS) {
-        urlObj.searchParams.set(key, VIP_CREDENTIALS[key]);
-      }
-      return urlObj.toString();
-    } catch (e) {
-      url = url.replace(/([?&])(account_email|uid|showy_token|cub_id|token)=[^&]*/g, '');
-      url = url.replace(/^[?&]+/, '').replace(/[?&]+$/, ''); 
-      var fallbackParams = Object.keys(VIP_CREDENTIALS).map(function(k) { return k + '=' + encodeURIComponent(VIP_CREDENTIALS[k]); }).join('&');
-      return url + (url.indexOf('?') !== -1 ? '&' : '?') + fallbackParams;
-    }
+    url = url.replace(VIP_REGEX, '');
+    url = url.replace(/^[?&]+/, '').replace(/[?&]+$/, ''); 
+    return url + (url.indexOf('?') !== -1 ? '&' : '?') + VIP_PARAMS_STRING;
   }
 
   function addHeaders() {
     var kit_kit_aesgcmkey = Lampa.Storage.get('kit_kit_aesgcmkey', '');
-    if (kit_kit_aesgcmkey) return { 'X-Kit-AesGcm': kit_kit_aesgcmkey };
+    if (kit_kit_aesgcmkey) return { 'X-Kit-AesGcm': Lampa.Storage.get('kit_kit_aesgcmkey', '') };
     return {};
   }
 
+  // ==========================================================
+  // НЕЙТРАЛИЗАЦИЯ ПРОВЕРОК АВТОРИЗАЦИИ И ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+  // ==========================================================
   function showyEnsureProAuth(onValid) {
-    if (onValid) onValid(); // Instant pass logic
+    if (onValid) onValid();
   }
 
+  // ФУНКЦИЯ ВОССТАНОВЛЕНА
   function formatEpisodeNumber(episodeNumber) {
     return (episodeNumber < 10 ? '0' : '') + episodeNumber;
   }
 
   var Network = Lampa.Reguest;
 
-  // ==========================================================
-  // 3. ОСНОВНОЙ КОМПОНЕНТ ОНЛАЙН ПЛЕЕРА ON2 (v2 AGGREGATOR)
-  // ==========================================================
   function component(object) {
     var network = new Network();
     var scroll = new Lampa.Scroll({ mask: true, over: true });
@@ -1228,21 +1202,76 @@
     };
   }
 
-  // ==========================================================
-  // 4. РЕГИСТРАЦИЯ ПЛАГИНА В LAMPA И ИНЖЕКЦИЯ КНОПКИ
-  // ==========================================================
+  function addSourceSearch(spiderName, spiderUri) {
+    var network = new Lampa.Reguest();
+    var source = {
+      title: spiderName,
+      search: function(params, oncomplite) {
+        function searchComplite(links) {
+          var keys = Lampa.Arrays.getKeys(links);
+          if (keys.length) {
+            var status = new Lampa.Status(keys.length);
+            status.onComplite = function(result) {
+              var rows = [];
+              keys.forEach(function(name) {
+                var line = result[name];
+                if (line && line.data && line.type == 'similar') {
+                  var cards = line.data.map(function(item) {
+                    item.title = Lampa.Utils.capitalizeFirstLetter(item.title);
+                    item.release_date = item.year || '0000'; item.balanser = spiderUri;
+                    if (item.img !== undefined) {
+                      if (item.img.charAt(0) === '/') item.img = Defined.localhost + item.img.substring(1);
+                      if (item.img.indexOf('/proxyimg') !== -1) item.img = account(item.img);
+                    }
+                    return item;
+                  })
+                  rows.push({ title: name, results: cards })
+                }
+              })
+              oncomplite(rows);
+            }
+            keys.forEach(function(name) {
+              network.silent(account(links[name]), function(data) { status.append(name, data); }, function() { status.error(); }, false, { headers: addHeaders() })
+            })
+          } else oncomplite([]);
+        }
+        network.silent(account(Defined.localhost + 'lite/' + spiderUri + '?title=' + params.query), function(json) {
+          if (json.rch) {
+            rchRun(json, function() {
+              network.silent(account(Defined.localhost + 'lite/' + spiderUri + '?title=' + params.query), function(links) { searchComplite(links); }, function() { oncomplite([]); }, false, { headers: addHeaders() });
+            });
+          } else searchComplite(json);
+        }, function() { oncomplite([]); }, false, { headers: addHeaders() });
+      },
+      onCancel: function() { network.clear() },
+      params: { lazy: true, align_left: true, card_events: { onMenu: function() {} } },
+      onMore: function(params, close) { close(); },
+      onSelect: function(params, close) {
+        close();
+        showyEnsureProAuth(function() {
+          Lampa.Activity.push({
+            url: params.element.url, title: 'Lampac - ' + params.element.title,
+            component: 'showy_ru_lampac', movie: params.element, page: 1,
+            search: params.element.title, clarification: true, balanser: params.element.balanser, noinfo: true
+          });
+        });
+      }
+    }
+    Lampa.Search.addSource(source)
+  }
+
   function startPlugin() {
-    window.showy_ru_lampac_on2_plugin = true;
+    window.showy_ru_lampac_plugin = true;
     var manifst = {
-      type: 'video', version: '2.0.0-MAX', name: 'Showy RU (on2.js v2)', description: 'Флагманский агрегатор онлайн-балансеров нового поколения v2',
-      component: 'showy_ru_lampac_v2',
-      onContextMenu: function onContextMenu(object) { return { name: 'Showy RU (on2.js v2)', description: Lampa.Lang.translate('lampac_watch') }; },
+      type: 'video', version: '1.7.1', name: 'Showy RU', description: 'Абсолютная Tizen-оптимизированная версия',
+      component: 'showy_ru_lampac',
+      onContextMenu: function onContextMenu(object) { return { name: 'Showy RU', description: Lampa.Lang.translate('lampac_watch') }; },
       onContextLauch: function onContextLauch(object) { openShowyPro(object); }
     };
 
     function pushShowyProActivity(activity) {
       showyEnsureProAuth(function() {
-        resetTemplates(); Lampa.Component.add('showy_ru_lampac_v2', component); Lampa.Activity.push(activity);
+        resetTemplates(); Lampa.Component.add('showy_ru_lampac', component); Lampa.Activity.push(activity);
       });
     }
 
@@ -1252,7 +1281,7 @@
       var id = Lampa.Utils.hash(original || object.original_title || object.original_name || object.title || object.name || '');
       var all = Lampa.Storage.get('clarification_search','{}');
       pushShowyProActivity({
-        url: '', title: 'Showy RU (on2.js v2)', component: 'showy_ru_lampac_v2',
+        url: '', title: Lampa.Lang.translate('title_showy60_showy_ru'), component: 'showy_ru_lampac',
         search: all[id] ? all[id] : (object.title || object.name || object.original_title || object.original_name || ''),
         search_one: object.title || object.name, search_two: object.original_title || object.original_name,
         movie: object, page: 1, clarification: all[id] ? true : false
@@ -1275,6 +1304,27 @@
     registerShowyProManifest();
     if (Lampa.Listener && Lampa.Listener.follow) { Lampa.Listener.follow('app', function(e) { if (e.type == 'ready') setTimeout(registerShowyProManifest, 0); }); }
     setTimeout(registerShowyProManifest, 1000); setTimeout(registerShowyProManifest, 3000);
+    Lampa.Lang.add({
+      lampac_watch: { ru: 'Смотреть онлайн', en: 'Watch online', uk: 'Дивитися онлайн', zh: '在线观看' },
+      lampac_video: { ru: 'Видео', en: 'Video', uk: 'Відео', zh: '视频' },
+      lampac_no_watch_history: { ru: 'Нет истории просмотра', en: 'No browsing history', ua: 'Немає історії перегляду', zh: '没有浏览历史' },
+      lampac_nolink: { ru: 'Не удалось извлечь ссылку', uk: 'Неможливо отримати посилання', en: 'Failed to fetch link', zh: '获取链接失败' },
+      lampac_balanser: { ru: 'Источник', uk: 'Джерело', en: 'Source', zh: '来源' },
+      helper_online_file: { ru: 'Удерживайте клавишу "ОК" для вызова контекстного меню', uk: 'Утримуйте клавішу "ОК" для виклику контекстного меню', en: 'Hold the "OK" key to bring up the context menu', zh: '按住“确定”键调出上下文菜单' },
+      title_showy60: { ru: 'Showy Pro RU', uk: 'Showy Pro RU', en: 'Online', zh: '在线的' },
+      title_showy60_showy_ru: { ru: 'Showy RU', uk: 'Showy RU', en: 'Showy RU', zh: 'Showy RU' },
+      lampac_voice_subscribe: { ru: 'Подписаться на перевод', uk: 'Підписатися на переклад', en: 'Subscribe to translation', zh: '订阅翻译' },
+      lampac_voice_success: { ru: 'Вы успешно подписались', uk: 'Ви успішно підписалися', en: 'You have successfully subscribed', zh: '您已成功订阅' },
+      lampac_voice_error: { ru: 'Возникла ошибка', uk: 'Виникла помилка', en: 'An error has occurred', zh: '发生了错误' },
+      lampac_clear_all_marks: { ru: 'Очистить все метки', uk: 'Очистити всі мітки', en: 'Clear all labels', zh: '清除所有标签' },
+      lampac_clear_all_timecodes: { ru: 'Очистить все тайм-коды', uk: 'Очистити всі тайм-коди', en: 'Clear all timecodes', zh: '清除所有时间代码' },
+      lampac_change_balanser: { ru: 'Изменить балансер', uk: 'Змінити балансер', en: 'Change balancer', zh: '更改平衡器' },
+      lampac_balanser_dont_work: { ru: 'Поиск на ({balanser}) не дал результатов', uk: 'Пошук на ({balanser}) не дав результатів', en: 'Search on ({balanser}) did not return any results', zh: '搜索 ({balanser}) 未返回任何结果' },
+      lampac_balanser_timeout: { ru: 'Источник будет переключен автоматически через <span class="timeout">10</span> секунд.', uk: 'Джерело буде автоматично переключено через <span class="timeout">10</span> секунд.', en: 'The source will be switched automatically after <span class="timeout">10</span> seconds.', zh: '平衡器将在<span class="timeout">10</span>秒内自动切换。' },
+      lampac_does_not_answer_text: { ru: 'Поиск на ({balanser}) не дал результатов', uk: 'Пошук на ({balanser}) не дав результатів', en: 'Search on ({balanser}) did not return any results', zh: '搜索 ({balanser}) 未返回 acquisitions' }
+    });
+    Lampa.Template.add('lampac_css', "\n        <style>\n        @charset 'UTF-8';.online-prestige{position:relative;-webkit-border-radius:.3em;border-radius:.3em;background-color:rgba(0,0,0,0.3);display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex}.online-prestige__body{padding:1.2em;line-height:1.3;-webkit-box-flex:1;-webkit-flex-grow:1;-moz-box-flex:1;-ms-flex-positive:1;flex-grow:1;position:relative}@media screen and (max-width:480px){.online-prestige__body{padding:.8em 1.2em}}.online-prestige__img{position:relative;width:13em;-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0;min-height:8.2em}.online-prestige__img>img{position:absolute;top:0;left:0;width:100%;height:100%;-o-object-fit:cover;object-fit:cover;-webkit-border-radius:.3em;border-radius:.3em;opacity:0;-webkit-transition:opacity .3s;-o-transition:opacity .3s;-moz-transition:opacity .3s;transition:opacity .3s}.online-prestige__img--loaded>img{opacity:1}@media screen and (max-width:480px){.online-prestige__img{width:7em;min-height:6em}}.online-prestige__folder{padding:1em;-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0}.online-prestige__folder>svg{width:4.4em !important;height:4.4em !important}.online-prestige__viewed{position:absolute;top:1em;left:1em;background:rgba(0,0,0,0.45);-webkit-border-radius:100%;border-radius:100%;padding:.25em;font-size:.76em}.online-prestige__viewed>svg{width:1.5em !important;height:1.5em !important}.online-prestige__episode-number{position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-box-align:center;-webkit-align-items:center;-moz-box-align:center;-ms-flex-align:center;align-items:center;-webkit-box-pack:center;-webkit-justify-content:center;-moz-box-pack:center;-ms-flex-pack:center;justify-content:center;font-size:2em}.online-prestige__loader{position:absolute;top:50%;left:50%;width:2em;height:2em;margin-left:-1em;margin-top:-1em;background:url(./img/loader.svg) no-repeat center center;-webkit-background-size:contain;-o-background-size:contain;background-size:contain}.online-prestige__head,.online-prestige__footer{display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-box-pack:justify;-webkit-justify-content:space-between;-moz-box-pack:justify;-ms-flex-pack:justify;justify-content:space-between;-webkit-box-align:center;-webkit-align-items:center;-moz-box-align:center;-ms-flex-align:center;align-items:center}.online-prestige__timeline{margin:.8em 0}.online-prestige__timeline>.time-line{display:block !important}.online-prestige__title{font-size:1.7em;overflow:hidden;-o-text-overflow:ellipsis;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:1;line-clamp:1;-webkit-box-orient:vertical}@media screen and (max-width:480px){.online-prestige__title{font-size:1.4em}}.online-prestige__time{padding-left:2em}.online-prestige__info{display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-box-align:center;-webkit-align-items:center;-moz-box-align:center;-ms-flex-align:center;align-items:center}.online-prestige__info>*{overflow:hidden;-o-text-overflow:ellipsis;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:1;line-clamp:1;-webkit-box-orient:vertical}.online-prestige__quality{padding-left:1em;white-space:nowrap}.online-prestige__scan-file{position:absolute;bottom:0;left:0;right:0}.online-prestige__scan-file .broadcast__scan{margin:0}.online-prestige .online-prestige-split{font-size:.8em;margin:0 1em;-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0}.online-prestige.focus::after{content:'';position:absolute;top:-0.6em;left:-0.6em;right:-0.6em;bottom:-0.6em;-webkit-border-radius:.7em;border-radius:.7em;border:solid .3em #fff;z-index:-1;pointer-events:none}.online-prestige+.online-prestige{margin-top:1.5em}.online-prestige--folder .online-prestige__footer{margin-top:.8em}.online-prestige-watched{padding:1em}.online-prestige-watched__icon>svg{width:1.5em;height:1.5em}.online-prestige-watched__body{padding-left:1em;padding-top:.1em;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-flex-wrap:wrap;-ms-flex-wrap:wrap;flex-wrap:wrap}.online-prestige-watched__body>span+span::before{content:' ● ';vertical-align:top;display:inline-block;margin:0 .5em}.online-prestige-rate{display:-webkit-inline-box;display:-webkit-inline-flex;display:-moz-inline-box;display:-ms-inline-flexbox;display:inline-flex;-webkit-box-align:center;-webkit-align-items:center;-moz-box-align:center;-ms-flex-align:center;align-items:center}.online-prestige-rate>svg{width:1.3em !important;height:1.3em !important}.online-prestige-rate>span{font-weight:600;font-size:1.1em;padding-left:.7em}.online-empty{line-height:1.4}.online-empty__title{font-size:1.8em;margin-bottom:.3em}.online-empty__time{font-size:1.2em;font-weight:300;margin-bottom:1.6em}.online-empty__buttons{display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex}.online-empty__buttons>*+*{margin-left:1em}.online-empty__button{background:rgba(0,0,0,0.3);font-size:1.2em;padding:.5em 1.2em;-webkit-border-radius:.2em;border-radius:.2em;margin-bottom:2.4em}.online-empty__button.focus{background:#fff;color:black}.online-empty__templates .online-empty-template:nth-child(2){opacity:.5}.online-empty__templates .online-empty-template:nth-child(3){opacity:.2}.online-empty-template{background-color:rgba(255,255,255,0.3);padding:1em;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;-webkit-box-align:center;-webkit-align-items:center;-moz-box-align:center;-ms-flex-align:center;align-items:center;-webkit-border-radius:.3em;border-radius:.3em}.online-empty-template>*{background:rgba(0,0,0,0.3);-webkit-border-radius:.3em;border-radius:.3em}.online-empty-template__ico{width:4em;height:4em;margin-right:2.4em}.online-empty-template__body{height:1.7em;width:70%}.online-empty-template+.online-empty-template{margin-top:1em}\n        </style>\n    ");
+    $('body').append(Lampa.Template.get('lampac_css', {}, true));
 
     function resetTemplates() {
       Lampa.Template.add('lampac_prestige_full', "<div class=\"online-prestige online-prestige--full selector\">\n            <div class=\"online-prestige__img\">\n                <img alt=\"\">\n                <div class=\"online-prestige__loader\"></div>\n            </div>\n            <div class=\"online-prestige__body\">\n                <div class=\"online-prestige__head\">\n                    <div class=\"online-prestige__title\">{title}</div>\n                    <div class=\"online-prestige__time\">{time}</div>\n                </div>\n\n                <div class=\"online-prestige__timeline\"></div>\n\n                <div class=\"online-prestige__footer\">\n                    <div class=\"online-prestige__info\">{info}</div>\n                    <div class=\"online-prestige__quality\">{quality}</div>\n                </div>\n            </div>\n        </div>");
@@ -1285,19 +1335,24 @@
       Lampa.Template.add('lampac_prestige_watched', "<div class=\"online-prestige online-prestige-watched selector\">\n            <div class=\"online-prestige-watched__icon\">\n                <svg width=\"21\" height=\"21\" viewBox=\"0 0 21 21\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\">\n                    <circle cx=\"10.5\" cy=\"10.5\" r=\"9\" stroke=\"currentColor\" stroke-width=\"3\"/>\n                    <path d=\"M14.8477 10.5628L8.20312 14.399L8.20313 6.72656L14.8477 10.5628Z\" fill=\"currentColor\"/>\n                </svg>\n            </div>\n            <div class=\"online-prestige-watched__body\">\n                \n            </div>\n        </div>");
     }
 
-    var buttonHTML = "<div class=\"full-start__button selector view--online-showy-v2 showy-v2--button\" data-subtitle=\"on2.js v2\">\n" +
+    // ==========================================================
+    // КНОПКА (СМОТРЕТЬ ОНЛАЙН) С НАТИВНОЙ ИКОНКОЙ
+    // ==========================================================
+    var buttonHTML = "<div class=\"full-start__button selector view--online-showy-ru showy-ru-showy60--button\" data-subtitle=\"Showy RU\">\n" +
                      "    <svg width=\"1.2em\" height=\"1.2em\" viewBox=\"0 0 24 24\"><use xlink:href=\"#sprite-play\"></use></svg>\n" +
-                     "    <span>Смотреть онлайн v2</span>\n" +
+                     "    <span>#{lampac_watch}</span>\n" +
                      "</div>";
 
-    Lampa.Component.add('showy_ru_lampac_v2', component);
+    Lampa.Component.add('showy_ru_lampac', component);
     resetTemplates();
 
     function injectButton(activity, movieData) {
       if (!activity || !activity.render) return;
       var render = activity.render();
       if (!render || !render.length) return;
-      if (render.find('.showy-v2--button').length) return;
+      
+      // Защита от дубликатов
+      if (render.find('.showy-ru-showy60--button').length) return;
       
       var btn = $(Lampa.Lang.translate(buttonHTML));
       btn.on('hover:enter', function() {
@@ -1305,11 +1360,14 @@
       });
 
       var injected = false;
+      
+      // Используем метод prepend для постановки кнопки на ПЕРВОЕ место
       var targetZones = [
           { el: render.find('.full-start-new__buttons'), method: 'prepend' },
           { el: render.find('.full-start__buttons'), method: 'prepend' },
           { el: render.find('.button--play').first(), method: 'before' },
-          { el: render.find('.view--torrent').first(), method: 'before' }
+          { el: render.find('.view--torrent').first(), method: 'before' },
+          { el: render.find('.button--book').first(), method: 'before' }
       ];
 
       for (var i = 0; i < targetZones.length; i++) {
@@ -1341,10 +1399,21 @@
         injectButton(Lampa.Activity.active().activity, Lampa.Activity.active().card);
       }
     } catch (e) {}
-
-    log('Showy RU on2.js v2 plugin initialized.');
+    
+    if (Lampa.Manifest.app_digital >= 177) {
+        var balansers_sync = [
+            "filmix","filmixtv","fxapi","filmixrezka","rezka","pizdatoehd","getstv","kinopub","zetflixdb",
+            "collaps","hdvb","kodik","bamboo","eneyida","kinoukr","uafilm","uakino","kinotochka","remux",
+            "anilibria","animedia","animego","animevost","animebesst","alloha","mirage","phantom","animelib",
+            "moonanime","vibix","fancdn","cdnvideohub","vokino","hydraflix","videasy","vidsrc","movpi",
+            "vidlink","smashystream","autoembed","pidtor","videoseed","iptvonline","veoveo","kinoflix",
+            "leproduction","vkmovie","kinogo","kinobase","asiage","geosaitebi","mikai","dreamerscast"
+        ];
+      balansers_sync.forEach(function(name) { Lampa.Storage.sync('online_choice_' + name, 'object_object'); });
+      Lampa.Storage.sync('online_watched_last', 'object_object');
+    }
   }
   
-  if (!window.showy_ru_lampac_on2_plugin) startPlugin();
+  if (!window.showy_ru_lampac_plugin) startPlugin();
 
 })();

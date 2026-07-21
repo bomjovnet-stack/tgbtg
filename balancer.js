@@ -1235,7 +1235,8 @@
     this.doesNotAnswer = function(er) {
       var _this9 = this;
       this.reset();
-      var html = Lampa.Template.get('lampac_does_not_answer', { balanser: balanser });
+      var balanserNameStr = sources[balanser] ? sources[balanser].name : balanser;
+      var html = Lampa.Template.get('lampac_does_not_answer', { balanser: balanserNameStr });
       if(er && er.accsdb) html.find('.online-empty__title').html(er.msg);
       var tic = er && er.accsdb ? 10 : 5;
       html.find('.cancel').on('hover:enter', function() { clearInterval(balanser_timer); });
@@ -1297,6 +1298,29 @@
   function startPlugin() {
     window.showy_ru_lampac_v2_plugin = true;
 
+    Lampa.Lang.add({
+      lampac_watch: { ru: 'Смотреть онлайн', en: 'Watch online', uk: 'Дивитися онлайн', zh: '在线观看' },
+      lampac_video: { ru: 'Видео', en: 'Video', uk: 'Відео', zh: '视频' },
+      lampac_no_watch_history: { ru: 'Нет истории просмотра', en: 'No browsing history', ua: 'Немає історії перегляду', zh: '没有浏览历史' },
+      lampac_nolink: { ru: 'Не удалось извлечь ссылку', uk: 'Неможливо отримати посилання', en: 'Failed to fetch link', zh: '获取链接失败' },
+      lampac_balanser: { ru: 'Источник', uk: 'Джерело', en: 'Source', zh: '来源' },
+      helper_online_file: { ru: 'Удерживайте клавишу "ОК" для вызова контекстного меню', uk: 'Утримуйте клавішу "ОК" для виклику контекстного меню', en: 'Hold the "OK" key to bring up the context menu', zh: '按住“确定”键调出上下文菜单' },
+      title_showy60: { ru: 'Showy Pro RU', uk: 'Showy Pro RU', en: 'Online', zh: '在线的' },
+      title_showy60_showy_ru: { ru: 'Showy RU v2', uk: 'Showy RU v2', en: 'Showy RU v2', zh: 'Showy RU v2' },
+      lampac_voice_subscribe: { ru: 'Подписаться на перевод', uk: 'Підписатися на переклад', en: 'Subscribe to translation', zh: '订阅翻译' },
+      lampac_voice_success: { ru: 'Вы успешно подписались', uk: 'Ви успішно підписалися', en: 'You have successfully subscribed', zh: '您已成功订阅' },
+      lampac_voice_error: { ru: 'Возникла ошибка', uk: 'Виникла помилка', en: 'An error has occurred', zh: '发生了错误' },
+      lampac_clear_all_marks: { ru: 'Очистить все метки', uk: 'Очистити всі мітки', en: 'Clear all labels', zh: '清除所有标签' },
+      lampac_clear_all_timecodes: { ru: 'Очистить все тайм-коды', uk: 'Очистити всі тайм-коди', en: 'Clear all timecodes', zh: '清除所有时间代码' },
+      lampac_change_balanser: { ru: 'Изменить балансер', uk: 'Змінити балансер', en: 'Change balancer', zh: '更改平衡器' },
+      lampac_balanser_dont_work: { ru: 'Поиск на ({balanser}) не дал результатов', uk: 'Пошук на ({balanser}) не дав результатів', en: 'Search on ({balanser}) did not return any results', zh: '搜索 ({balanser}) 未返回任何结果' },
+      lampac_balanser_timeout: { ru: 'Источник будет переключен автоматически через <span class="timeout">10</span> секунд.', uk: 'Джерело буде автоматично переключено через <span class="timeout">10</span> секунд.', en: 'The source will be switched automatically after <span class="timeout">10</span> seconds.', zh: '平衡器将在<span class="timeout">10</span>秒内自动切换。' },
+      lampac_does_not_answer_text: { ru: 'Поиск на ({balanser}) не дал результатов', uk: 'Пошук на ({balanser}) не дав результатів', en: 'Search on ({balanser}) did not return any results', zh: '搜索 ({balanser}) 未返回任何结果' }
+    });
+
+    Lampa.Template.add('lampac_css_v2', "\n        <style>\n        .full-start__button.view--online-showy-ru-v2, .full-start__button.showy-ru-v2--button { display: inline-flex !important; width: auto !important; max-width: max-content !important; flex: 0 0 auto !important; align-items: center !important; justify-content: center !important; margin-right: 0.8em !important; margin-bottom: 0.5em !important; }\n        </style>\n    ");
+    $('body').append(Lampa.Template.get('lampac_css_v2', {}, true));
+
     function openShowyPro(object) {
       if (!object) return;
       var original = object.number_of_seasons ? object.original_name : object.original_title;
@@ -1330,7 +1354,7 @@
 
     var buttonHTML = '<div class="full-start__button selector view--online-showy-ru-v2 showy-ru-v2--button" data-subtitle="Showy RU v2">' +
                      '    <svg width="1.2em" height="1.2em" viewBox="0 0 24 24"><use xlink:href="#sprite-play"></use></svg>' +
-                     '    <span>Смотреть онлайн</span>' +
+                     '    <span>#{lampac_watch}</span>' +
                      '</div>';
 
     function injectButton(activity, movieData) {
@@ -1339,16 +1363,29 @@
       if (!render || !render.length) return;
       if (render.find('.showy-ru-v2--button').length) return;
 
-      var btn = $(buttonHTML);
+      var btn = $(Lampa.Lang.translate(buttonHTML));
       btn.on('hover:enter', function() {
         openShowyPro(movieData);
       });
 
-      var target = render.find('.full-start-new__buttons, .full-start__buttons, .button--play').first();
-      if (target.length) {
-        target.before(btn);
-      } else {
-        render.find('.info__right').prepend(btn);
+      var targetZones = [
+          { el: render.find('.full-start-new__buttons'), method: 'prepend' },
+          { el: render.find('.full-start__buttons'), method: 'prepend' },
+          { el: render.find('.button--play').first(), method: 'before' },
+          { el: render.find('.view--torrent').first(), method: 'before' },
+          { el: render.find('.button--book').first(), method: 'before' }
+      ];
+
+      for (var i = 0; i < targetZones.length; i++) {
+          var zone = targetZones[i];
+          if (zone.el && zone.el.length) {
+              if (zone.method === 'prepend') {
+                  zone.el.prepend(btn);
+              } else {
+                  zone.el.before(btn);
+              }
+              break;
+          }
       }
     }
 

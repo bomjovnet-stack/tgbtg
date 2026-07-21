@@ -1340,9 +1340,9 @@
     }
 
     var manifst = {
-      type: 'video', version: '2.0.0', name: 'Showy RU v2', description: 'Флагманский онлайн балансер v2',
+      type: 'video', version: '2.0.0', name: 'Смотреть онлайн', description: 'Флагманский онлайн балансер',
       component: 'showy_ru_lampac_v2',
-      onContextMenu: function onContextMenu(object) { return { name: 'Showy RU v2', description: 'Смотреть онлайн (v2)' }; },
+      onContextMenu: function onContextMenu(object) { return { name: 'Смотреть онлайн', description: 'Смотреть онлайн' }; },
       onContextLauch: function onContextLauch(object) { openShowyPro(object); }
     };
 
@@ -1354,7 +1354,7 @@
     Lampa.Component.add('showy_ru_lampac_v2', component);
     resetTemplates();
 
-    var buttonHTML = '<div class="full-start__button selector view--online-showy-ru-v2 showy-ru-v2--button" data-subtitle="Смортреть">' +
+    var buttonHTML = '<div class="full-start__button selector view--online-showy-ru-v2 showy-ru-v2--button" data-subtitle="Смотреть онлайн">' +
                      '    <svg width="1.2em" height="1.2em" viewBox="0 0 24 24"><use xlink:href="#sprite-play"></use></svg>' +
                      '    <span>#{lampac_watch}</span>' +
                      '</div>';

@@ -455,7 +455,6 @@
         }
       };
       if (filter.addButtonBack) filter.addButtonBack();
-      filter.render().find('.filter--sort span').text(Lampa.Lang.translate('lampac_balanser'));
       scroll.body().addClass('torrent-list');
       files.appendFiles(scroll.render());
       files.appendHead(filter.render());
@@ -1228,16 +1227,19 @@
       var html = Lampa.Template.get('lampac_does_not_answer', {});
       html.find('.online-empty__buttons').remove();
       html.find('.online-empty__title').text(Lampa.Lang.translate('title_error'));
-      html.find('.online-empty__time').text(er && er.accsdb ? er.msg : Lampa.Lang.translate('lampac_does_not_answer_text').replace('{balanser}', (sources[balanser]?sources[balanser].name:balanser)));
+      var bName = sources[balanser] ? sources[balanser].name : balanser;
+      var msg = er && er.accsdb ? er.msg : Lampa.Lang.translate('lampac_does_not_answer_text').replace('{balanser}', bName).replace('({balanser})', bName);
+      html.find('.online-empty__time').text(msg);
       scroll.clear(); scroll.append(html); this.loading(false);
     };
 
     this.doesNotAnswer = function(er) {
       var _this9 = this;
       this.reset();
-      var balanserNameStr = sources[balanser] ? sources[balanser].name : balanser;
-      var html = Lampa.Template.get('lampac_does_not_answer', { balanser: balanserNameStr });
-      if(er && er.accsdb) html.find('.online-empty__title').html(er.msg);
+      var bName = sources[balanser] ? sources[balanser].name : balanser;
+      var html = Lampa.Template.get('lampac_does_not_answer', {});
+      var titleStr = (er && er.accsdb) ? er.msg : Lampa.Lang.translate('lampac_balanser_dont_work').replace('{balanser}', bName).replace('({balanser})', bName);
+      html.find('.online-empty__title').html(titleStr);
       var tic = er && er.accsdb ? 10 : 5;
       html.find('.cancel').on('hover:enter', function() { clearInterval(balanser_timer); });
       html.find('.change').on('hover:enter', function() {
@@ -1318,7 +1320,7 @@
       lampac_does_not_answer_text: { ru: 'Поиск на ({balanser}) не дал результатов', uk: 'Пошук на ({balanser}) не дав результатів', en: 'Search on ({balanser}) did not return any results', zh: '搜索 ({balanser}) 未返回任何结果' }
     });
 
-    Lampa.Template.add('lampac_css_v2', "\n        <style>\n        .full-start__button.view--online-showy-ru-v2, .full-start__button.showy-ru-v2--button { display: inline-flex !important; width: auto !important; max-width: max-content !important; flex: 0 0 auto !important; align-items: center !important; justify-content: center !important; margin-right: 0.8em !important; margin-bottom: 0.5em !important; }\n        </style>\n    ");
+    Lampa.Template.add('lampac_css_v2', "\n        <style>\n        .full-start-new__buttons .showy-ru-v2--button, .full-start__buttons .showy-ru-v2--button, .full-start__button.showy-ru-v2--button { display: inline-flex !important; width: auto !important; max-width: max-content !important; flex: 0 0 auto !important; align-items: center !important; justify-content: center !important; margin-right: 0.8em !important; margin-bottom: 0.5em !important; }\n        </style>\n    ");
     $('body').append(Lampa.Template.get('lampac_css_v2', {}, true));
 
     function openShowyPro(object) {
@@ -1352,7 +1354,7 @@
     Lampa.Component.add('showy_ru_lampac_v2', component);
     resetTemplates();
 
-    var buttonHTML = '<div class="full-start__button selector view--online-showy-ru-v2 showy-ru-v2--button" data-subtitle="Showy RU v2">' +
+    var buttonHTML = '<div class="full-start__button selector view--online-showy-ru-v2 showy-ru-v2--button" data-subtitle="Смортреть">' +
                      '    <svg width="1.2em" height="1.2em" viewBox="0 0 24 24"><use xlink:href="#sprite-play"></use></svg>' +
                      '    <span>#{lampac_watch}</span>' +
                      '</div>';
@@ -1368,24 +1370,16 @@
         openShowyPro(movieData);
       });
 
-      var targetZones = [
-          { el: render.find('.full-start-new__buttons'), method: 'prepend' },
-          { el: render.find('.full-start__buttons'), method: 'prepend' },
-          { el: render.find('.button--play').first(), method: 'before' },
-          { el: render.find('.view--torrent').first(), method: 'before' },
-          { el: render.find('.button--book').first(), method: 'before' }
-      ];
-
-      for (var i = 0; i < targetZones.length; i++) {
-          var zone = targetZones[i];
-          if (zone.el && zone.el.length) {
-              if (zone.method === 'prepend') {
-                  zone.el.prepend(btn);
-              } else {
-                  zone.el.before(btn);
-              }
-              break;
-          }
+      var container = render.find('.full-start-new__buttons, .full-start__buttons').first();
+      if (container.length) {
+        container.append(btn);
+      } else {
+        var firstBtn = render.find('.button--play, .view--torrent, .button--book').first();
+        if (firstBtn.length) {
+          firstBtn.after(btn);
+        } else {
+          render.find('.info__right').prepend(btn);
+        }
       }
     }
 

@@ -99,15 +99,27 @@
   }
     
   // ==========================================================
-  // VIP SESSION INJECTION & AUTH BYPASS (matching on2.js)
+  // VIP SESSION INJECTION & AUTH BYPASS
   // ==========================================================
-  var VIP_PARAMS_STRING = "account_email=irinakrisa555%40ya.ru&uid=xfp4fi4j&cub_id=967951967&showy_token=22cf26b7-c0bf-448b-b9f8-0e072029ff2c";
+  function getVipParams() {
+    var email = encodeURIComponent(Lampa.Storage.get('account_email', '') || 'irinakrisa555@ya.ru');
+    var uid = Lampa.Storage.get('lampac_unic_id', '') || 'xfp4fi4j';
+    var cub_id = Lampa.Storage.get('cub_id', '') || '967951967';
+    var token = Lampa.Storage.get('token', '') || '';
+    
+    var params = "account_email=" + email + "&uid=" + uid;
+    if (cub_id) params += "&cub_id=" + cub_id;
+    if (token) params += "&token=" + encodeURIComponent(token);
+    return params;
+  }
+
   var VIP_REGEX = /([?&])(account_email|uid|showy_token|cub_id|token)=[^&]*/g;
   function account(url) {
     url = String(url || '');
     url = url.replace(VIP_REGEX, '');
     url = url.replace(/^[?&]+/, '').replace(/[?&]+$/, ''); 
-    return url + (url.indexOf('?') !== -1 ? '&' : '?') + VIP_PARAMS_STRING;
+    var vipParams = getVipParams();
+    return url + (url.indexOf('?') !== -1 ? '&' : '?') + vipParams;
   }
 
   // Enforce VIP Storage parameters

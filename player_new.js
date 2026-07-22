@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Lampa: YouTube Ultra Player Suite
 // @namespace    lampa-youtube-player-suite
-// @version      1000.YT.1
-// @description  YouTube styled HTML5 player for Lampa: Red Scrubber, Gear Settings Menu, Speed & Quality Selectors, Circular Seek Ripples, Next Episode Countdown, Ambient Glow & Stats for Nerds.
+// @version      1000.YT.2
+// @description  YouTube styled HTML5 player for Lampa: Double-Click/Double-Tap Seek Engine (-10s/+10s Cumulative Ripples), Red Scrubber, Gear Settings Menu, Speed & Quality Selectors, Next Episode Countdown, Ambient Glow & Stats for Nerds.
 // @match        *://*/*
 // @grant        none
 // ==/UserScript==
@@ -25,6 +25,7 @@
     RED_ACCENT: '#FF0000',
     DARK_BG: '#0F0F0F',
     SEEK_STEP: 10, // seconds
+    DOUBLE_CLICK_DELAY: 300, // ms threshold for double tap/click
     SPEED_OPTIONS: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
     QUALITIES: ['Auto', '2160p 4K', '1080p 60fps', '1080p', '720p', '480p', '360p'],
     COUNTDOWN_SECONDS: 10,
@@ -42,7 +43,11 @@
     subDelay: 0,
     countdownTimer: null,
     countdownSeconds: YT_CONFIG.COUNTDOWN_SECONDS,
-    seekingRipplesTimer: null
+    seekingRipplesTimer: null,
+    accumulatedLeft: 0,
+    accumulatedRight: 0,
+    lastKeySeekTime: 0,
+    lastKeyDir: null
   };
 
   // ============================================================
@@ -79,14 +84,14 @@
         overflow: hidden;
       }
 
-      /* Circular Seek Ripple Animation (+10s / -10s) */
+      /* Circular Seek Ripple Animation (+10s / -10s Cumulative) */
       .yt-seek-ripple {
         position: absolute;
         top: 50%;
         transform: translateY(-50%);
-        width: 140px; height: 140px;
+        width: 150px; height: 150px;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.22);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -94,20 +99,24 @@
         pointer-events: none;
         z-index: 1005;
         opacity: 0;
-        transition: transform 0.25s cubic-bezier(0,0,0.2,1), opacity 0.25s ease;
+        transition: transform 0.2s cubic-bezier(0,0,0.2,1), opacity 0.2s ease;
+        box-shadow: 0 0 35px rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
       }
       .yt-seek-ripple.left { left: 10%; }
       .yt-seek-ripple.right { right: 10%; }
       .yt-seek-ripple.active {
         opacity: 1;
-        transform: translateY(-50%) scale(1.15);
+        transform: translateY(-50%) scale(1.25);
       }
       .yt-seek-ripple-text {
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 18px;
+        font-weight: 800;
         color: #ffffff;
-        margin-top: 4px;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        margin-top: 6px;
+        text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+        letter-spacing: 0.5px;
       }
 
       /* Big Center Play/Pause Flash Ripple */
@@ -115,9 +124,9 @@
         position: absolute;
         top: 50%; left: 50%;
         transform: translate(-50%, -50%) scale(0.7);
-        width: 80px; height: 80px;
+        width: 86px; height: 86px;
         border-radius: 50%;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.7);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -125,10 +134,11 @@
         opacity: 0;
         pointer-events: none;
         transition: transform 0.3s cubic-bezier(0,0,0.2,1), opacity 0.3s ease;
+        box-shadow: 0 0 20px rgba(0,0,0,0.8);
       }
       .yt-center-ripple.active {
         opacity: 1;
-        transform: translate(-50%, -50%) scale(1.2);
+        transform: translate(-50%, -50%) scale(1.25);
       }
 
       /* YouTube Red Modern Progress Scrubber */
@@ -357,7 +367,7 @@
         <svg width="36" height="36" viewBox="0 0 24 24" fill="#ffffff">
           <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/>
         </svg>
-        <div class="yt-seek-ripple-text">-10 сек</div>
+        <div class="yt-seek-ripple-text" id="yt-seek-left-text">-10 сек</div>
       </div>
 
       <!-- Right Seek Ripple (+10s) -->
@@ -365,7 +375,7 @@
         <svg width="36" height="36" viewBox="0 0 24 24" fill="#ffffff">
           <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6-8.5-6z"/>
         </svg>
-        <div class="yt-seek-ripple-text">+10 сек</div>
+        <div class="yt-seek-ripple-text" id="yt-seek-right-text">+10 сек</div>
       </div>
 
       <!-- Center Play/Pause Circle Ripple -->
@@ -464,14 +474,24 @@
     });
   }
 
-  function showSeekRipple(direction) {
-    var el = document.getElementById(direction === 'left' ? 'yt-seek-left' : 'yt-seek-right');
+  function showSeekRipple(direction, seconds) {
+    var isLeft = direction === 'left';
+    var el = document.getElementById(isLeft ? 'yt-seek-left' : 'yt-seek-right');
+    var textEl = document.getElementById(isLeft ? 'yt-seek-left-text' : 'yt-seek-right-text');
     if (!el) return;
+
+    var secs = seconds || YT_CONFIG.SEEK_STEP;
+    if (textEl) {
+      textEl.innerText = (isLeft ? '-' : '+') + secs + ' сек';
+    }
+
     el.classList.add('active');
     clearTimeout(state.seekingRipplesTimer);
     state.seekingRipplesTimer = setTimeout(function() {
       el.classList.remove('active');
-    }, 600);
+      state.accumulatedLeft = 0;
+      state.accumulatedRight = 0;
+    }, 800);
   }
 
   function showCenterRipple(isPlay) {
@@ -537,7 +557,114 @@
   }
 
   // ============================================================
-  // 5. NEXT EPISODE COUNTDOWN & AUTOMATIC PLAYBACK
+  // 5. DOUBLE TAP & DOUBLE CLICK GESTURE ENGINE (REWINDS & ACCUMULATION)
+  // ============================================================
+  function bindGestureControls() {
+    var lastTapTime = 0;
+    var lastTapX = 0;
+    var lastTapY = 0;
+    var singleTapTimer = null;
+
+    function handlePointerEvent(e) {
+      var video = document.querySelector('video');
+      var p = window.Lampa && window.Lampa.Player;
+      if (!video || !p || !p.opened) return;
+
+      // Skip clicks on player controls, settings menu, modals, sliders or buttons
+      var target = e.target;
+      if (target && (
+          target.closest('.player-panel') || 
+          target.closest('.yt-settings-modal') || 
+          target.closest('.yt-next-card') || 
+          target.closest('.yt-stats-panel') ||
+          target.closest('.selector') ||
+          target.tagName === 'BUTTON' ||
+          target.tagName === 'INPUT'
+      )) {
+        return;
+      }
+
+      var now = Date.now();
+      var rect = (video.parentElement || document.body).getBoundingClientRect();
+      var clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : window.innerWidth / 2);
+      var clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : window.innerHeight / 2);
+
+      var x = clientX - rect.left;
+      var y = clientY - rect.top;
+      var width = rect.width || window.innerWidth;
+
+      var timeDiff = now - lastTapTime;
+      var dist = Math.hypot(x - lastTapX, y - lastTapY);
+
+      // Check if this click qualifies as a DOUBLE CLICK / DOUBLE TAP
+      if (timeDiff > 0 && timeDiff < YT_CONFIG.DOUBLE_CLICK_DELAY && dist < 120) {
+        // DOUBLE CLICK DETECTED!
+        if (singleTapTimer) {
+          clearTimeout(singleTapTimer);
+          singleTapTimer = null;
+        }
+
+        if (e.cancelable) e.preventDefault();
+
+        var relX = x / width;
+
+        if (relX < 0.4) {
+          // LEFT SIDE DOUBLE TAP -> REWIND BACK
+          state.accumulatedRight = 0;
+          state.accumulatedLeft += YT_CONFIG.SEEK_STEP;
+          video.currentTime = Math.max(0, video.currentTime - YT_CONFIG.SEEK_STEP);
+          showSeekRipple('left', state.accumulatedLeft);
+        } else if (relX > 0.6) {
+          // RIGHT SIDE DOUBLE TAP -> FAST FORWARD
+          state.accumulatedLeft = 0;
+          state.accumulatedRight += YT_CONFIG.SEEK_STEP;
+          video.currentTime = Math.min(video.duration || 0, video.currentTime + YT_CONFIG.SEEK_STEP);
+          showSeekRipple('right', state.accumulatedRight);
+        } else {
+          // CENTER DOUBLE TAP -> TOGGLE PLAY / PAUSE
+          state.accumulatedLeft = 0;
+          state.accumulatedRight = 0;
+          if (video.paused) {
+            video.play();
+            showCenterRipple(true);
+          } else {
+            video.pause();
+            showCenterRipple(false);
+          }
+        }
+
+        lastTapTime = now;
+        lastTapX = x;
+        lastTapY = y;
+      } else {
+        // FIRST SINGLE CLICK
+        lastTapTime = now;
+        lastTapX = x;
+        lastTapY = y;
+
+        singleTapTimer = setTimeout(function() {
+          singleTapTimer = null;
+          // Single tap on video container toggles play/pause or controls
+          if (video.paused) {
+            video.play();
+            showCenterRipple(true);
+          } else {
+            video.pause();
+            showCenterRipple(false);
+          }
+        }, YT_CONFIG.DOUBLE_CLICK_DELAY);
+      }
+    }
+
+    if (window.PointerEvent) {
+      document.addEventListener('pointerdown', handlePointerEvent, true);
+    } else {
+      document.addEventListener('click', handlePointerEvent, true);
+    }
+  }
+
+  // ============================================================
+  // 6. NEXT EPISODE COUNTDOWN & AUTOMATIC PLAYBACK
   // ============================================================
   function startNextEpisodeCountdown() {
     var p = window.Lampa && window.Lampa.Player;
@@ -604,7 +731,7 @@
   }
 
   // ============================================================
-  // 6. TELEMETRY & STATS FOR NERDS UPDATER
+  // 7. TELEMETRY & STATS FOR NERDS UPDATER
   // ============================================================
   function updateStatsForNerds() {
     if (!state.statsVisible) return;
@@ -641,7 +768,7 @@
   }
 
   // ============================================================
-  // 7. KEYBOARD & D-PAD SHORTCUTS
+  // 8. KEYBOARD & D-PAD SHORTCUTS
   // ============================================================
   function bindKeyControls() {
     window.addEventListener('keydown', function(e) {
@@ -649,6 +776,8 @@
       var p = window.Lampa && window.Lampa.Player;
 
       if (!video || !p || !p.opened) return;
+
+      var now = Date.now();
 
       // Space / K : Play / Pause
       if (e.keyCode === 32 || e.keyCode === 75) {
@@ -660,25 +789,33 @@
           showCenterRipple(false);
         }
       }
-      // J : Seek Back 10s
-      else if (e.keyCode === 74) {
+      // J / Left Arrow in player -> Seek Back
+      else if (e.keyCode === 74 || (e.keyCode === 37 && document.activeElement === document.body)) {
+        if (state.lastKeyDir === 'left' && (now - state.lastKeySeekTime < 500)) {
+          state.accumulatedLeft += YT_CONFIG.SEEK_STEP;
+        } else {
+          state.accumulatedLeft = YT_CONFIG.SEEK_STEP;
+          state.accumulatedRight = 0;
+        }
+        state.lastKeySeekTime = now;
+        state.lastKeyDir = 'left';
+
         video.currentTime = Math.max(0, video.currentTime - YT_CONFIG.SEEK_STEP);
-        showSeekRipple('left');
+        showSeekRipple('left', state.accumulatedLeft);
       }
-      // L : Seek Forward 10s
-      else if (e.keyCode === 76) {
+      // L / Right Arrow in player -> Seek Forward
+      else if (e.keyCode === 76 || (e.keyCode === 39 && document.activeElement === document.body)) {
+        if (state.lastKeyDir === 'right' && (now - state.lastKeySeekTime < 500)) {
+          state.accumulatedRight += YT_CONFIG.SEEK_STEP;
+        } else {
+          state.accumulatedRight = YT_CONFIG.SEEK_STEP;
+          state.accumulatedLeft = 0;
+        }
+        state.lastKeySeekTime = now;
+        state.lastKeyDir = 'right';
+
         video.currentTime = Math.min(video.duration || 0, video.currentTime + YT_CONFIG.SEEK_STEP);
-        showSeekRipple('right');
-      }
-      // Left Arrow in player
-      else if (e.keyCode === 37 && document.activeElement === document.body) {
-        video.currentTime = Math.max(0, video.currentTime - 5);
-        showSeekRipple('left');
-      }
-      // Right Arrow in player
-      else if (e.keyCode === 39 && document.activeElement === document.body) {
-        video.currentTime = Math.min(video.duration || 0, video.currentTime + 5);
-        showSeekRipple('right');
+        showSeekRipple('right', state.accumulatedRight);
       }
       // S : Toggle Stats for Nerds
       else if (e.keyCode === 83) {
@@ -700,11 +837,12 @@
   }
 
   // ============================================================
-  // 8. INITIALIZATION & HOOKS INTO LAMPA.PLAYER
+  // 9. INITIALIZATION & HOOKS INTO LAMPA.PLAYER
   // ============================================================
   function bootYouTubePlayerSuite() {
     injectYouTubeStyles();
     createYouTubeOverlay();
+    bindGestureControls();
     bindKeyControls();
 
     // Loop interval for telemetry
@@ -742,3 +880,4 @@
     bootYouTubePlayerSuite();
   }
 })();
+

@@ -154,37 +154,24 @@
     return false;
   }
 
-  // Тихая подгрузка скрипта плагина с каскадным переключением доменов
+  // Тихая подгрузка скрипта плагина: если файл недоступен (404/сеть) —
+  // просто убираем тег, без ошибок и уведомлений в Lampa.
   function skazInjectScript(src) {
     try {
       if (src && src.indexOf('http://') === 0) {
         src = src.replace('http://', 'https://');
       }
-      var domains = ['skaz.tv', 'skaztv.online', 'skaz.team', 'list.skaz.tv'];
-      var currIdx = 0;
-      for (var i = 0; i < domains.length; i++) {
-        if (src.indexOf(domains[i]) !== -1) {
-          currIdx = i;
-          break;
+      var script = document.createElement('script');
+      script.src = src;
+      script.onerror = function () {
+        try { if (script.parentNode) script.parentNode.removeChild(script); } catch (e) {}
+        if (src && src.indexOf('skaz.tv') !== -1) {
+          var altScript = document.createElement('script');
+          altScript.src = src.replace('skaz.tv', 'skaztv.online');
+          try { document.head.appendChild(altScript); } catch(e) {}
         }
-      }
-
-      function tryInject(idx) {
-        if (idx >= domains.length) return;
-        var currentSrc = src;
-        if (idx !== currIdx) {
-          currentSrc = src.replace(domains[currIdx], domains[idx]);
-        }
-        var script = document.createElement('script');
-        script.src = currentSrc;
-        script.onerror = function () {
-          try { if (script.parentNode) script.parentNode.removeChild(script); } catch (e) {}
-          tryInject(idx + 1);
-        };
-        document.head.appendChild(script);
-      }
-
-      tryInject(currIdx);
+      };
+      document.head.appendChild(script);
     } catch (e) {}
   }
 
@@ -3450,57 +3437,6 @@
     setTimeout(function () { pick(-1); }, 5000); // подстраховка
   }
 
-  // Universal network request helper for SkazTV with CORS / native bridge & account bypass
-  function skazNetworkSend(url, method, postData, successCb, errorCb) {
-    var reqUrl = account(url);
-    var done = false;
-    function win(res) {
-      if (done) return;
-      done = true;
-      if (successCb) successCb(res);
-    }
-    function fail(err) {
-      if (done) return;
-      done = true;
-      if (errorCb) errorCb(err);
-    }
-
-    try {
-      var net = new Lampa.Reguest();
-      net.timeout(8000);
-      var opts = { dataType: 'json' };
-      if (method === 'POST' && postData) {
-        opts.headers = { 'Content-Type': 'application/json' };
-      }
-      net.silent(reqUrl, function(res) {
-        if (res) win(res);
-        else tryAjax();
-      }, function() {
-        tryAjax();
-      }, postData, opts);
-    } catch(e) {
-      tryAjax();
-    }
-
-    function tryAjax() {
-      $.ajax({
-        url: reqUrl,
-        type: method || 'GET',
-        data: postData ? (typeof postData === 'string' ? postData : JSON.stringify(postData)) : undefined,
-        contentType: postData ? 'application/json' : undefined,
-        dataType: 'json',
-        timeout: 8000,
-        success: function(res) {
-          if (res) win(res);
-          else fail('empty ajax');
-        },
-        error: function(err) {
-          fail(err);
-        }
-      });
-    }
-  }
-
   var SkazUser = {
     data: null,
     currentPlaylist: 'main',
@@ -3508,9 +3444,8 @@
     _domainResolved: false,
     onSwitchPlaylist: null,
     fetch: function fetch(callback, _error) {
-      SkazUser.checkDailyTest(function() {
-        skazResolveDomain(function () { SkazUser._fetch(callback, _error); });
-      });
+      // failover: перед запросом выбираем домен по живому stream
+      skazResolveDomain(function () { SkazUser._fetch(callback, _error); });
     },
     _fetch: function _fetch(callback, _error) {
       var email = Lampa.Storage.get('account_email', '') || 'irinakrisa555@ya.ru';
@@ -3523,39 +3458,64 @@
         Lampa.Storage.set('account_email', email);
       }
 
-      var interceptedData = {
-        subscription: {
-          active: true,
-          is_pro: true,
-          days_left: 1,
-          srv: 0,
-          tg: "636576"
-        },
-        playlists: {
-          main: account("http://skaz.tv/play/998115ea"),
-          adult: account("http://skaz.tv/play18/998115ea"),
-          reserve: account("http://skaztv.top/play/998115ea"),
-          reserve18: account("http://skaztv.top/play18/998115ea")
-        },
-        epg: {
-          url: "http://api.skaztv.online/lite.xml.gz",
-          reserveurl: "http://api.skaz.tv/lite.xml.gz",
-          days: 3
-        },
-        meta: {
-          generated_at: "2026-07-22T07:08:18Z"
-        }
-      };
+      function applyFallback() {
+        var fallbackData = {
+          subscription: {
+            active: true,
+            is_pro: true,
+            days_left: 365,
+            srv: 0
+          },
+          playlists: {
+            main: account('https://stream.skaz.tv/playlist.m3u'),
+            reserve: account('https://stream2.skaz.tv/playlist.m3u'),
+            free: account('https://stream.skaz.tv/free.m3u')
+          }
+        };
+        SkazUser.data = fallbackData;
+        if (callback) callback(fallbackData);
+      }
 
-      SkazUser.data = interceptedData;
-      if (callback) callback(interceptedData);
-    },
-    api2Url: 'https://skaz.tv/lk/api2.php',
-    getTest: function getTest(aaa, callback) {
-      if (callback) callback(SkazUser.data);
-    },
-    checkDailyTest: function checkDailyTest(callback) {
-      if (callback) callback(null);
+      $.ajax({
+        url: SkazUser.url,
+        type: 'POST',
+        data: JSON.stringify({
+          email: email,
+          unic_id: unic_id,
+          app: 'lampa'
+        }),
+        contentType: 'application/json',
+        timeout: 10000,
+        success: function success(response) {
+          try {
+            if (typeof response === 'string') response = JSON.parse(response);
+            if (response && !response.error && response.playlists) {
+              for (var k in response.playlists) {
+                if (response.playlists[k]) response.playlists[k] = account(response.playlists[k]);
+              }
+              if (!response.subscription) response.subscription = {};
+              response.subscription.active = true;
+              response.subscription.is_pro = true;
+              if (!response.subscription.days_left) response.subscription.days_left = 365;
+
+              SkazUser.data = response;
+              if (callback) callback(response);
+            } else {
+              applyFallback();
+            }
+          } catch (e) {
+            applyFallback();
+          }
+        },
+        error: function error(e) {
+          if (SkazUser.url.indexOf('skaz.tv') !== -1) {
+            SkazUser.url = SkazUser.url.replace('skaz.tv', 'skaztv.online');
+            SkazUser._fetch(callback, _error);
+          } else {
+            applyFallback();
+          }
+        }
+      });
     },
     getPlaylistUrl: function getPlaylistUrl() {
       if (!SkazUser.data || !SkazUser.data.playlists) return '';
@@ -3615,21 +3575,18 @@
     changeServer: function changeServer(srv, callback) {
       var email = Lampa.Storage.get('account_email', '') || '';
       var unic_id = Lampa.Storage.get('lampac_unic_id', '') || '';
-      var domains = ['skaz.tv', 'skaztv.online', 'skaz.team', 'list.skaz.tv'];
-
-      function tryChange(idx) {
-        if (idx >= domains.length) {
-          Lampa.Noty.show('Ошибка соединения с сервером');
-          if (callback) callback({ error: 'connection' });
-          return;
-        }
-        var targetUrl = 'https://' + domains[idx] + '/new/api.php';
-        skazNetworkSend(targetUrl, 'POST', {
+      $.ajax({
+        url: SkazUser.url.replace('user.json', 'api.php'),
+        type: 'POST',
+        data: JSON.stringify({
           action: 'change_server',
           email: email,
           unic_id: unic_id,
           srv: srv
-        }, function(response) {
+        }),
+        contentType: 'application/json',
+        timeout: 10000,
+        success: function success(response) {
           try {
             if (typeof response === 'string') response = JSON.parse(response);
             if (response.ok) {
@@ -3637,17 +3594,18 @@
                 SkazUser.data.subscription.srv = srv;
               }
               Lampa.Noty.show('Сервер изменён');
-              if (callback) callback(response);
-              return;
+            } else {
+              Lampa.Noty.show('Ошибка: ' + (response.error || 'неизвестная'));
             }
-          } catch(e) {}
-          tryChange(idx + 1);
-        }, function() {
-          tryChange(idx + 1);
-        });
-      }
-
-      tryChange(0);
+          } catch (e) {
+            Lampa.Noty.show('Ошибка смены сервера');
+          }
+          if (callback) callback(response);
+        },
+        error: function error() {
+          Lampa.Noty.show('Ошибка соединения с сервером');
+        }
+      });
     }
   };
   function generateBillId() {

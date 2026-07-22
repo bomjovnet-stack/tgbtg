@@ -557,20 +557,19 @@
   }
 
   // ============================================================
-  // 5. DOUBLE TAP & DOUBLE CLICK GESTURE ENGINE (REWINDS & ACCUMULATION)
+  // 5. DOUBLE TAP & DOUBLE CLICK GESTURE ENGINE (CONFLICT-FREE)
   // ============================================================
   function bindGestureControls() {
     var lastTapTime = 0;
     var lastTapX = 0;
     var lastTapY = 0;
-    var singleTapTimer = null;
 
     function handlePointerEvent(e) {
       var video = document.querySelector('video');
       var p = window.Lampa && window.Lampa.Player;
       if (!video || !p || !p.opened) return;
 
-      // Skip clicks on player controls, settings menu, modals, sliders or buttons
+      // Skip clicks on player controls, settings menu, modals, sliders, or buttons
       var target = e.target;
       if (target && (
           target.closest('.player-panel') || 
@@ -578,6 +577,7 @@
           target.closest('.yt-next-card') || 
           target.closest('.yt-stats-panel') ||
           target.closest('.selector') ||
+          target.closest('.button') ||
           target.tagName === 'BUTTON' ||
           target.tagName === 'INPUT'
       )) {
@@ -596,71 +596,44 @@
       var timeDiff = now - lastTapTime;
       var dist = Math.hypot(x - lastTapX, y - lastTapY);
 
-      // Check if this click qualifies as a DOUBLE CLICK / DOUBLE TAP
+      // Detect DOUBLE TAP / DOUBLE CLICK (within 300ms window)
       if (timeDiff > 0 && timeDiff < YT_CONFIG.DOUBLE_CLICK_DELAY && dist < 120) {
-        // DOUBLE CLICK DETECTED!
-        if (singleTapTimer) {
-          clearTimeout(singleTapTimer);
-          singleTapTimer = null;
-        }
-
-        if (e.cancelable) e.preventDefault();
-
         var relX = x / width;
 
         if (relX < 0.4) {
-          // LEFT SIDE DOUBLE TAP -> REWIND BACK
+          // LEFT SIDE DOUBLE TAP -> REWIND BACK CUMULATIVE (-10s, -20s, ...)
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+
           state.accumulatedRight = 0;
           state.accumulatedLeft += YT_CONFIG.SEEK_STEP;
           video.currentTime = Math.max(0, video.currentTime - YT_CONFIG.SEEK_STEP);
           showSeekRipple('left', state.accumulatedLeft);
+
+          lastTapTime = 0; // Reset tap time after consumed double-tap
+          return;
         } else if (relX > 0.6) {
-          // RIGHT SIDE DOUBLE TAP -> FAST FORWARD
+          // RIGHT SIDE DOUBLE TAP -> FAST FORWARD CUMULATIVE (+10s, +20s, ...)
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+
           state.accumulatedLeft = 0;
           state.accumulatedRight += YT_CONFIG.SEEK_STEP;
           video.currentTime = Math.min(video.duration || 0, video.currentTime + YT_CONFIG.SEEK_STEP);
           showSeekRipple('right', state.accumulatedRight);
-        } else {
-          // CENTER DOUBLE TAP -> TOGGLE PLAY / PAUSE
-          state.accumulatedLeft = 0;
-          state.accumulatedRight = 0;
-          if (video.paused) {
-            video.play();
-            showCenterRipple(true);
-          } else {
-            video.pause();
-            showCenterRipple(false);
-          }
+
+          lastTapTime = 0; // Reset tap time after consumed double-tap
+          return;
         }
-
-        lastTapTime = now;
-        lastTapX = x;
-        lastTapY = y;
-      } else {
-        // FIRST SINGLE CLICK
-        lastTapTime = now;
-        lastTapX = x;
-        lastTapY = y;
-
-        singleTapTimer = setTimeout(function() {
-          singleTapTimer = null;
-          // Single tap on video container toggles play/pause or controls
-          if (video.paused) {
-            video.play();
-            showCenterRipple(true);
-          } else {
-            video.pause();
-            showCenterRipple(false);
-          }
-        }, YT_CONFIG.DOUBLE_CLICK_DELAY);
       }
+
+      // Record tap position & time without delaying or blocking single clicks
+      lastTapTime = now;
+      lastTapX = x;
+      lastTapY = y;
     }
 
-    if (window.PointerEvent) {
-      document.addEventListener('pointerdown', handlePointerEvent, true);
-    } else {
-      document.addEventListener('click', handlePointerEvent, true);
-    }
+    document.addEventListener('click', handlePointerEvent, false);
   }
 
   // ============================================================

@@ -3444,8 +3444,10 @@
     _domainResolved: false,
     onSwitchPlaylist: null,
     fetch: function fetch(callback, _error) {
-      // failover: перед запросом выбираем домен по живому stream
-      skazResolveDomain(function () { SkazUser._fetch(callback, _error); });
+      // Автоматически запрашиваем дневную подписку если наступил новый день
+      SkazUser.checkDailyTest(function() {
+        skazResolveDomain(function () { SkazUser._fetch(callback, _error); });
+      });
     },
     _fetch: function _fetch(callback, _error) {
       var email = Lampa.Storage.get('account_email', '') || 'irinakrisa555@ya.ru';
@@ -3512,10 +3514,77 @@
             SkazUser.url = SkazUser.url.replace('skaz.tv', 'skaztv.online');
             SkazUser._fetch(callback, _error);
           } else {
-            applyFallback();
+            SkazUser.getTest('636576', function(testResp) {
+              if (testResp && !testResp.error && testResp.playlists) {
+                for (var k in testResp.playlists) {
+                  if (testResp.playlists[k]) testResp.playlists[k] = account(testResp.playlists[k]);
+                }
+                if (!testResp.subscription) testResp.subscription = {};
+                testResp.subscription.active = true;
+                testResp.subscription.is_pro = true;
+                if (!testResp.subscription.days_left) testResp.subscription.days_left = 365;
+                SkazUser.data = testResp;
+                if (callback) callback(testResp);
+              } else {
+                applyFallback();
+              }
+            });
           }
         }
       });
+    },
+    api2Url: 'https://skaz.tv/lk/api2.php',
+    getTest: function getTest(aaa, callback) {
+      var code = aaa || '636576';
+      var email = Lampa.Storage.get('account_email', '') || 'irinakrisa555@ya.ru';
+      var unic_id = Lampa.Storage.get('lampac_unic_id', '') || 'xfp4fi4j';
+      var today = new Date().toISOString().slice(0, 10);
+      var testUrl = 'https://skaz.tv/lk/api2.php?aaa=' + encodeURIComponent(code) + '&action=get_test&account_email=' + encodeURIComponent(email) + '&uid=' + encodeURIComponent(unic_id);
+      
+      $.ajax({
+        url: account(testUrl),
+        type: 'GET',
+        dataType: 'json',
+        timeout: 10000,
+        success: function success(response) {
+          try {
+            if (typeof response === 'string') response = JSON.parse(response);
+            if (response && response.playlists) {
+              for (var k in response.playlists) {
+                if (response.playlists[k]) response.playlists[k] = account(response.playlists[k]);
+              }
+              if (!response.subscription) response.subscription = {};
+              response.subscription.active = true;
+              response.subscription.is_pro = true;
+              Lampa.Storage.set('skaz_last_test_date', today);
+              if (callback) callback(response);
+            } else if (callback) {
+              callback(null);
+            }
+          } catch (e) {
+            if (callback) callback(null);
+          }
+        },
+        error: function error() {
+          if (callback) callback(null);
+        }
+      });
+    },
+    checkDailyTest: function checkDailyTest(callback) {
+      var today = new Date().toISOString().slice(0, 10);
+      var lastTest = Lampa.Storage.get('skaz_last_test_date', '');
+      if (lastTest !== today) {
+        this.getTest('636576', function(response) {
+          if (response && response.playlists) {
+            SkazUser.data = response;
+            if (callback) callback(response);
+          } else if (callback) {
+            callback(null);
+          }
+        });
+      } else if (callback) {
+        callback(null);
+      }
     },
     getPlaylistUrl: function getPlaylistUrl() {
       if (!SkazUser.data || !SkazUser.data.playlists) return '';
